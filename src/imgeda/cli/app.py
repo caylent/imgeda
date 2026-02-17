@@ -1,0 +1,38 @@
+"""Root Typer app with global options."""
+
+from __future__ import annotations
+
+import typer
+
+from imgeda.cli.check import check_app
+from imgeda.cli.plot import plot_app
+
+app = typer.Typer(
+    name="imgeda",
+    help="High-performance image dataset exploratory data analysis CLI tool.",
+    no_args_is_help=False,
+    invoke_without_command=True,
+)
+app.add_typer(plot_app, name="plot", help="Generate plots from a manifest.")
+app.add_typer(check_app, name="check", help="Check for issues in a manifest.")
+
+
+@app.callback(invoke_without_command=True)
+def main(ctx: typer.Context) -> None:
+    """imgeda — Image Dataset EDA Tool.
+
+    Run without arguments for interactive mode, or use a subcommand.
+    """
+    if ctx.invoked_subcommand is None:
+        from imgeda.cli.interactive import run_interactive
+
+        run_interactive()
+
+
+# Import and register commands
+from imgeda.cli.scan import scan  # noqa: E402
+from imgeda.cli.report import report, info  # noqa: E402
+
+app.command()(scan)
+app.command()(info)
+app.command()(report)
