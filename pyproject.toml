@@ -1,0 +1,56 @@
+[project]
+name = "imgeda"
+dynamic = ["version"]
+description = "High-performance image dataset exploratory data analysis CLI tool"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "Randall Hunt (Caylent)", email = "randall.hunt@caylent.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "typer>=0.15",
+    "rich>=13.0",
+    "questionary>=2.1",
+    "Pillow>=11.0",
+    "numpy>=2.0",
+    "imagehash>=4.3",
+    "orjson>=3.10",
+    "matplotlib>=3.10",
+]
+
+[project.optional-dependencies]
+opencv = ["opencv-python-headless>=4.10"]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=6.0",
+    "pytest-timeout>=2.3",
+    "ruff>=0.9",
+    "mypy>=1.14",
+]
+
+[project.scripts]
+imgeda = "imgeda.cli.app:app"
+
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+fallback-version = "0.0.0"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/imgeda"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+timeout = 30

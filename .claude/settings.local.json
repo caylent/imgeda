@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:docs.astral.sh)",
+      "WebFetch(domain:packaging.python.org)",
+      "WebFetch(domain:www.datacamp.com)",
+      "WebFetch(domain:inquirerpy.readthedocs.io)",
+      "WebFetch(domain:rich.readthedocs.io)",
+      "Bash(git init:*)",
+      "Bash(uv init:*)",
+      "Bash(for d in cli core models io plotting pipeline lambda_handler)",
+      "Bash(do touch src/imgeda/$d/__init__.py)",
+      "Bash(done)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ]
+  }
+}
