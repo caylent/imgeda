@@ -3,25 +3,61 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 
 import orjson
 
-from imgeda.models.manifest import ImageRecord, ManifestMeta
+from imgeda.models.manifest import MANIFEST_META_KEY, ImageRecord, ManifestMeta
 
 
 def write_meta(path: str | Path, meta: ManifestMeta) -> None:
-    """Write (or overwrite) the metadata header as the first line of the manifest."""
+    """Write (or overwrite) the metadata header as the first line of the manifest.
+
+    Uses atomic write via temp file + rename to avoid corruption on crash.
+    """
     path = Path(path)
-    data = orjson.dumps(meta.to_dict(), option=orjson.OPT_APPEND_NEWLINE)
-    if path.exists():
-        # Read existing content, replace first line
-        existing = path.read_bytes()
-        lines = existing.split(b"\n", 1)
-        rest = lines[1] if len(lines) > 1 else b""
-        path.write_bytes(data + rest.lstrip(b"\n") if rest.strip() else data)
-    else:
-        path.write_bytes(data)
+    meta_line = orjson.dumps(meta.to_dict(), option=orjson.OPT_APPEND_NEWLINE)
+
+    if not path.exists():
+        path.write_bytes(meta_line)
+        return
+
+    # Read existing records (skip old meta), write new meta + records atomically
+    rest_lines: list[bytes] = []
+    with open(path, "rb") as f:
+        for line in f:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            try:
+                data = orjson.loads(stripped)
+            except orjson.JSONDecodeError:
+                continue
+            if data.get(MANIFEST_META_KEY):
+                continue  # skip old meta line
+            rest_lines.append(line if line.endswith(b"\n") else line + b"\n")
+
+    # Write to temp file then rename for atomicity
+    fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(meta_line)
+            for line in rest_lines:
+                f.write(line)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        os.unlink(tmp)
+        raise
+
+
+def create_manifest(path: str | Path, meta: ManifestMeta) -> None:
+    """Create a fresh manifest file with only the metadata header (truncates existing)."""
+    path = Path(path)
+    meta_line = orjson.dumps(meta.to_dict(), option=orjson.OPT_APPEND_NEWLINE)
+    path.write_bytes(meta_line)
 
 
 def append_records(path: str | Path, records: list[ImageRecord]) -> None:
@@ -44,7 +80,7 @@ def read_manifest(path: str | Path) -> tuple[ManifestMeta | None, list[ImageReco
     records: list[ImageRecord] = []
 
     with open(path, "rb") as f:
-        for i, line in enumerate(f):
+        for line in f:
             line = line.strip()
             if not line:
                 continue
@@ -54,7 +90,7 @@ def read_manifest(path: str | Path) -> tuple[ManifestMeta | None, list[ImageReco
                 # Skip corrupt lines (likely truncated from crash)
                 continue
 
-            if i == 0 and data.get("__manifest_meta__"):
+            if data.get(MANIFEST_META_KEY) and meta is None:
                 meta = ManifestMeta.from_dict(data)
             else:
                 records.append(ImageRecord.from_dict(data))

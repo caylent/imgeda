@@ -10,6 +10,7 @@ from rich.console import Console
 
 from imgeda.io.image_reader import discover_images
 from imgeda.models.config import ScanConfig
+from imgeda.utils import fmt_bytes
 
 console = Console()
 
@@ -36,15 +37,11 @@ def run_interactive() -> None:
 
     # Quick count
     images = discover_images(str(dir_path), DEFAULT_EXTENSIONS)
-    total_size = sum(os.path.getsize(p) for p in images[:1000])
+    try:
+        total_size = sum(os.path.getsize(p) for p in images[:1000])
+    except OSError:
+        total_size = 0
     est_size = total_size * len(images) / min(len(images), 1000) if images else 0
-
-    def fmt_bytes(b: float) -> str:
-        if b > 1_000_000_000:
-            return f"{b / 1_000_000_000:.1f} GB"
-        if b > 1_000_000:
-            return f"{b / 1_000_000:.1f} MB"
-        return f"{b / 1_000:.1f} KB"
 
     console.print(f"  Found [bold]{len(images):,}[/bold] images (~{fmt_bytes(est_size)})\n")
 

@@ -9,6 +9,9 @@ on:
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.13"]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -18,14 +21,20 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
       - name: Install dependencies
-        run: uv sync --all-extras
+        run: UV_PYTHON=${{ matrix.python-version }} uv sync --all-extras
 
       - name: Lint
-        run: uv run ruff check src/ tests/
+        run: UV_PYTHON=${{ matrix.python-version }} uv run ruff check src/ tests/
 
       - name: Format check
-        run: uv run ruff format --check src/ tests/
+        run: UV_PYTHON=${{ matrix.python-version }} uv run ruff format --check src/ tests/
+
+      - name: Type check
+        run: UV_PYTHON=${{ matrix.python-version }} uv run mypy src/imgeda/
 
       - name: Test
-        run: uv run pytest --tb=short -q
+        run: UV_PYTHON=${{ matrix.python-version }} uv run pytest --tb=short -q

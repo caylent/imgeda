@@ -6,21 +6,25 @@ import numpy as np
 
 from imgeda.models.config import PlotConfig
 from imgeda.models.manifest import ImageRecord
-from imgeda.plotting.base import create_figure, save_figure, valid_records
+from imgeda.plotting.base import create_figure, prepare_records, save_figure
 
 
 def plot_file_size(records: list[ImageRecord], config: PlotConfig) -> str:
-    recs = valid_records(records)
+    recs = prepare_records(records, config)
     sizes_kb = [r.file_size_bytes / 1024 for r in recs]
 
     fig, ax = create_figure(config)
 
-    ax.hist(sizes_kb, bins=100, color="steelblue", edgecolor="white", linewidth=0.3)
-    ax.set_xscale("log")
-
-    # Annotate percentiles
     if sizes_kb:
         arr = np.array(sizes_kb)
+        # Use log-space bins for proper log-scale histogram
+        lo = max(arr.min(), 0.1)
+        hi = arr.max()
+        bins = np.logspace(np.log10(lo), np.log10(hi), 80)
+        ax.hist(sizes_kb, bins=bins, color="steelblue", edgecolor="white", linewidth=0.3)
+        ax.set_xscale("log")
+
+        # Annotate percentiles
         median = float(np.median(arr))
         p95 = float(np.percentile(arr, 95))
         p99 = float(np.percentile(arr, 99))

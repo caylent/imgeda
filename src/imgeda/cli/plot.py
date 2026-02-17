@@ -9,6 +9,7 @@ from rich.console import Console
 
 from imgeda.io.manifest_io import read_manifest
 from imgeda.models.config import PlotConfig
+from imgeda.models.manifest import ImageRecord
 
 plot_app = typer.Typer(help="Generate plots from a manifest.")
 console = Console()
@@ -20,13 +21,22 @@ def _load_and_config(
     fmt: str,
     dpi: int,
     sample: Optional[int],
-) -> tuple[list, PlotConfig]:
-
+) -> tuple[list[ImageRecord], PlotConfig]:
     _meta, records = read_manifest(manifest)
     if not records:
         console.print("[red]No records found in manifest.[/red]")
         raise typer.Exit(1)
-    config = PlotConfig(output_dir=output, format=fmt, dpi=dpi, sample=sample)
+    # Carry artifact threshold from scan settings if available
+    artifact_threshold = 50.0
+    if _meta and _meta.settings.get("artifact_threshold"):
+        artifact_threshold = float(_meta.settings["artifact_threshold"])
+    config = PlotConfig(
+        output_dir=output,
+        format=fmt,
+        dpi=dpi,
+        sample=sample,
+        artifact_threshold=artifact_threshold,
+    )
     return records, config
 
 
@@ -115,22 +125,6 @@ def channels(
 
     records, config = _load_and_config(manifest, output, fmt, dpi, sample)
     path = plot_channels(records, config)
-    console.print(f"[green]Saved:[/green] {path}")
-
-
-@plot_app.command(name="pixel-hist")
-def pixel_hist(
-    manifest: str = _manifest_opt,
-    output: str = _output_opt,
-    fmt: str = _format_opt,
-    dpi: int = _dpi_opt,
-    sample: Optional[int] = _sample_opt,
-) -> None:
-    """Plot pixel brightness histogram."""
-    from imgeda.plotting.pixel_stats import plot_pixel_histogram
-
-    records, config = _load_and_config(manifest, output, fmt, dpi, sample)
-    path = plot_pixel_histogram(records, config)
     console.print(f"[green]Saved:[/green] {path}")
 
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from imgeda.models.config import PlotConfig
 from imgeda.models.manifest import ImageRecord
-from imgeda.plotting.base import create_figure, save_figure, valid_records
+from imgeda.plotting.base import create_figure, prepare_records, save_figure
 
 COMMON_RATIOS = {
     "1:1": 1.0,
@@ -15,7 +15,7 @@ COMMON_RATIOS = {
 
 
 def plot_aspect_ratio(records: list[ImageRecord], config: PlotConfig) -> str:
-    recs = valid_records(records)
+    recs = prepare_records(records, config)
     ratios = [r.aspect_ratio for r in recs if r.aspect_ratio > 0]
 
     fig, ax = create_figure(config)

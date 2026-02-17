@@ -68,9 +68,15 @@ class ImageRecord:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ImageRecord:
-        ps = data.pop("pixel_stats", None)
-        cs = data.pop("corner_stats", None)
-        rec = cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
+        ps = data.get("pixel_stats")
+        cs = data.get("corner_stats")
+        rec = cls(
+            **{
+                k: v
+                for k, v in data.items()
+                if k in cls.__dataclass_fields__ and k not in ("pixel_stats", "corner_stats")
+            }
+        )
         if ps and isinstance(ps, dict):
             rec.pixel_stats = PixelStats(**ps)
         if cs and isinstance(cs, dict):
@@ -78,9 +84,12 @@ class ImageRecord:
         return rec
 
 
+MANIFEST_META_KEY = "__manifest_meta__"
+
+
 @dataclass(slots=True)
 class ManifestMeta:
-    __manifest_meta__: bool = field(default=True, repr=False)
+    is_meta: bool = field(default=True, repr=False)
     input_dir: str = ""
     schema_version: int = 1
     settings: dict[str, Any] = field(default_factory=dict)
@@ -88,8 +97,12 @@ class ManifestMeta:
     created_at: str = ""
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        d.pop("is_meta", None)
+        d[MANIFEST_META_KEY] = True
+        return d
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ManifestMeta:
-        return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
+        filtered = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}
+        return cls(**filtered)

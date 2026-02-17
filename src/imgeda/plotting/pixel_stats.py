@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-
 from imgeda.models.config import PlotConfig
 from imgeda.models.manifest import ImageRecord
-from imgeda.plotting.base import create_figure, save_figure, valid_records
+from imgeda.plotting.base import create_figure, prepare_records, save_figure
 
 
 def plot_brightness(records: list[ImageRecord], config: PlotConfig) -> str:
     """Histogram of mean brightness with shaded dark/normal/overexposed regions."""
-    recs = [r for r in valid_records(records) if r.pixel_stats]
+    recs = [r for r in prepare_records(records, config) if r.pixel_stats]
     brightness = [r.pixel_stats.mean_brightness for r in recs]  # type: ignore[union-attr]
 
     fig, ax = create_figure(config)
@@ -32,7 +31,7 @@ def plot_brightness(records: list[ImageRecord], config: PlotConfig) -> str:
 
 def plot_channels(records: list[ImageRecord], config: PlotConfig) -> str:
     """Box plot of R/G/B channel means across all images."""
-    recs = [r for r in valid_records(records) if r.pixel_stats]
+    recs = [r for r in prepare_records(records, config) if r.pixel_stats]
 
     r_means = [r.pixel_stats.mean_r for r in recs]  # type: ignore[union-attr]
     g_means = [r.pixel_stats.mean_g for r in recs]  # type: ignore[union-attr]
@@ -55,8 +54,3 @@ def plot_channels(records: list[ImageRecord], config: PlotConfig) -> str:
     fig.tight_layout()
 
     return save_figure(fig, "channels", config)
-
-
-def plot_pixel_histogram(records: list[ImageRecord], config: PlotConfig) -> str:
-    """Combined brightness histogram — alias for plot_brightness."""
-    return plot_brightness(records, config)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from imgeda.models.config import PlotConfig
 from imgeda.models.manifest import ImageRecord
-from imgeda.plotting.base import create_figure, save_figure, sample_records, valid_records
+from imgeda.plotting.base import create_figure, prepare_records, save_figure
 
 
 RESOLUTION_REFS = {
@@ -15,7 +15,7 @@ RESOLUTION_REFS = {
 
 
 def plot_dimensions(records: list[ImageRecord], config: PlotConfig) -> str:
-    recs = valid_records(records)
+    recs = prepare_records(records, config)
     widths = [r.width for r in recs]
     heights = [r.height for r in recs]
 
@@ -26,6 +26,8 @@ def plot_dimensions(records: list[ImageRecord], config: PlotConfig) -> str:
         hb = ax.hexbin(widths, heights, gridsize=50, cmap="YlOrRd", mincnt=1)
         fig.colorbar(hb, ax=ax, label="Count")
     else:
+        from imgeda.plotting.base import sample_records
+
         recs_sampled = sample_records(recs, 5000)
         w = [r.width for r in recs_sampled]
         h = [r.height for r in recs_sampled]

@@ -4,22 +4,25 @@ from __future__ import annotations
 
 from imgeda.models.config import PlotConfig
 from imgeda.models.manifest import ImageRecord
-from imgeda.plotting.base import create_figure, save_figure, valid_records
+from imgeda.plotting.base import create_figure, prepare_records, save_figure
 
 
 def plot_artifacts(records: list[ImageRecord], config: PlotConfig) -> str:
-    recs = [r for r in valid_records(records) if r.corner_stats]
+    recs = [r for r in prepare_records(records, config) if r.corner_stats]
     deltas = [r.corner_stats.delta for r in recs]  # type: ignore[union-attr]
+    threshold = config.artifact_threshold
 
     fig, ax = create_figure(config)
 
     ax.hist(deltas, bins=80, color="steelblue", edgecolor="white", linewidth=0.3)
-    ax.axvline(50, color="red", linestyle="--", alpha=0.8, label="Threshold (50)")
+    ax.axvline(
+        threshold, color="red", linestyle="--", alpha=0.8, label=f"Threshold ({threshold:.0f})"
+    )
 
-    artifact_count = sum(1 for d in deltas if d > 50)
+    artifact_count = sum(1 for d in deltas if d > threshold)
     ax.annotate(
         f"{artifact_count:,} images above threshold",
-        xy=(50, ax.get_ylim()[1] * 0.8),
+        xy=(threshold, ax.get_ylim()[1] * 0.8),
         fontsize=9,
         color="red",
     )

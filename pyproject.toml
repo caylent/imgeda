@@ -7,7 +7,20 @@ license = { text = "MIT" }
 authors = [
     { name = "Randall Hunt (Caylent)", email = "randall.hunt@caylent.com" }
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.10"
+keywords = ["image", "eda", "dataset", "analysis", "quality", "duplicates", "cli"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
 dependencies = [
     "typer>=0.15",
     "rich>=13.0",
@@ -18,6 +31,11 @@ dependencies = [
     "orjson>=3.10",
     "matplotlib>=3.10",
 ]
+
+[project.urls]
+Homepage = "https://github.com/caylent/imgeda"
+Repository = "https://github.com/caylent/imgeda"
+"Bug Tracker" = "https://github.com/caylent/imgeda/issues"
 
 [project.optional-dependencies]
 opencv = ["opencv-python-headless>=4.10"]
@@ -43,12 +61,15 @@ fallback-version = "0.0.0"
 [tool.hatch.build.targets.wheel]
 packages = ["src/imgeda"]
 
+[tool.hatch.build.targets.sdist]
+exclude = ["docs/examples/", "data/", "plots/", ".claude/"]
+
 [tool.ruff]
-target-version = "py313"
+target-version = "py310"
 line-length = 100
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.10"
 strict = true
 
 [tool.pytest.ini_options]

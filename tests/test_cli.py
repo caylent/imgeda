@@ -8,8 +8,8 @@ import pytest
 from typer.testing import CliRunner
 
 from imgeda.cli.app import app
-from imgeda.io.manifest_io import append_records, write_meta
-from imgeda.models.manifest import ImageRecord, ManifestMeta, PixelStats, CornerStats
+from imgeda.io.manifest_io import append_records, create_manifest
+from imgeda.models.manifest import CornerStats, ImageRecord, ManifestMeta, PixelStats
 
 runner = CliRunner()
 
@@ -19,6 +19,11 @@ class TestCLI:
         result = runner.invoke(app, ["--help"])
         assert result.exit_code == 0
         assert "imgeda" in result.output.lower() or "image" in result.output.lower()
+
+    def test_version(self) -> None:
+        result = runner.invoke(app, ["--version"])
+        assert result.exit_code == 0
+        assert "imgeda" in result.output
 
     def test_scan_help(self) -> None:
         result = runner.invoke(app, ["scan", "--help"])
@@ -59,7 +64,7 @@ class TestCLI:
     def test_info_command(self, tmp_path: Path) -> None:
         manifest = tmp_path / "manifest.jsonl"
         meta = ManifestMeta(input_dir="/data", created_at="now")
-        write_meta(str(manifest), meta)
+        create_manifest(str(manifest), meta)
         records = [
             ImageRecord(
                 path="/data/a.jpg",
@@ -84,13 +89,44 @@ class TestCLI:
         result = runner.invoke(app, ["check", "--help"])
         assert result.exit_code == 0
 
+    @pytest.mark.timeout(60)
+    def test_report_command(self, tmp_path: Path) -> None:
+        manifest = tmp_path / "manifest.jsonl"
+        meta = ManifestMeta(input_dir="/data", created_at="now")
+        create_manifest(str(manifest), meta)
+        records = [
+            ImageRecord(
+                path="/data/a.jpg",
+                filename="a.jpg",
+                width=100,
+                height=100,
+                format="JPEG",
+                color_mode="RGB",
+                file_size_bytes=5000,
+                pixel_stats=PixelStats(
+                    mean_r=120.0, mean_g=130.0, mean_b=140.0, mean_brightness=130.0
+                ),
+                corner_stats=CornerStats(corner_mean=100.0, center_mean=130.0, delta=30.0),
+                phash="abcd1234",
+            ),
+        ]
+        append_records(str(manifest), records)
+
+        report_path = str(tmp_path / "report.html")
+        result = runner.invoke(app, ["report", "-m", str(manifest), "-o", report_path])
+        assert result.exit_code == 0
+        assert Path(report_path).exists()
+        content = Path(report_path).read_text()
+        assert "imgeda" in content.lower()
+        assert "<img" in content  # embedded plots
+
 
 class TestCheckCommands:
     @pytest.fixture
     def manifest_with_issues(self, tmp_path: Path) -> str:
         manifest = tmp_path / "manifest.jsonl"
         meta = ManifestMeta(input_dir="/data", created_at="now")
-        write_meta(str(manifest), meta)
+        create_manifest(str(manifest), meta)
         records = [
             ImageRecord(path="/data/good.jpg", filename="good.jpg", width=100, height=100),
             ImageRecord(path="/data/corrupt.jpg", filename="corrupt.jpg", is_corrupt=True),
@@ -132,3 +168,4 @@ class TestCheckCommands:
     def test_check_all(self, manifest_with_issues: str) -> None:
         result = runner.invoke(app, ["check", "all", "-m", manifest_with_issues])
         assert result.exit_code == 0
+        assert "Near-duplicate" in result.output

@@ -40,3 +40,4 @@ class PlotConfig:
     dpi: int = 150
     sample: int | None = None
     figsize: tuple[float, float] = (12.0, 8.0)
+    artifact_threshold: float = 50.0

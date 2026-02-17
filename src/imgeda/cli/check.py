@@ -2,19 +2,20 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 import orjson
 import typer
 from rich.console import Console
 
 from imgeda.io.manifest_io import read_manifest
+from imgeda.models.manifest import ImageRecord
 
 check_app = typer.Typer(help="Check for issues in a manifest.")
 console = Console()
 
 
-def _load_records(manifest: str) -> list:
+def _load_records(manifest: str) -> list[ImageRecord]:
     _meta, records = read_manifest(manifest)
     if not records:
         console.print("[red]No records found in manifest.[/red]")
@@ -22,7 +23,7 @@ def _load_records(manifest: str) -> list:
     return records
 
 
-def _output_results(results: list[dict], output: Optional[str], label: str) -> None:
+def _output_results(results: list[dict[str, Any]], output: Optional[str], label: str) -> None:
     console.print(f"[bold]{label}:[/bold] {len(results):,} found")
     if output:
         with open(output, "wb") as f:
@@ -114,6 +115,8 @@ def duplicates_cmd(manifest: str = _manifest_opt, output: Optional[str] = _outpu
 @check_app.command(name="all")
 def all_checks(manifest: str = _manifest_opt, output: Optional[str] = _output_opt) -> None:
     """Run all checks."""
+    from imgeda.core.duplicates import find_exact_duplicates, find_near_duplicates
+
     console.print("[bold]Running all checks...[/bold]\n")
 
     records = _load_records(manifest)
@@ -121,7 +124,8 @@ def all_checks(manifest: str = _manifest_opt, output: Optional[str] = _output_op
     # Corrupt
     corrupt_list = [r for r in records if r.is_corrupt]
     console.print(
-        f"  Corrupt: [{'red' if corrupt_list else 'green'}]{len(corrupt_list):,}[/{'red' if corrupt_list else 'green'}]"
+        f"  Corrupt: [{'red' if corrupt_list else 'green'}]{len(corrupt_list):,}"
+        f"[/{'red' if corrupt_list else 'green'}]"
     )
 
     # Exposure
@@ -134,9 +138,12 @@ def all_checks(manifest: str = _manifest_opt, output: Optional[str] = _output_op
     artifacts_list = [r for r in records if r.has_border_artifact]
     console.print(f"  Border artifacts: [yellow]{len(artifacts_list):,}[/yellow]")
 
-    # Duplicates
-    from imgeda.core.duplicates import find_exact_duplicates
-
+    # Duplicates (both exact and near)
     exact = find_exact_duplicates(records)
-    dup_count = sum(len(v) - 1 for v in exact.values())
-    console.print(f"  Duplicate images: [yellow]{dup_count:,}[/yellow] (in {len(exact):,} groups)")
+    near = find_near_duplicates(records)
+    exact_dup_count = sum(len(v) - 1 for v in exact.values())
+    near_dup_groups = len(near)
+    console.print(
+        f"  Exact duplicates: [yellow]{exact_dup_count:,}[/yellow] (in {len(exact):,} groups)"
+    )
+    console.print(f"  Near-duplicate groups: [yellow]{near_dup_groups:,}[/yellow]")

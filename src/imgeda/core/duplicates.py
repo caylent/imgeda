@@ -7,6 +7,9 @@ from collections import defaultdict
 from imgeda.core.hasher import hamming_distance
 from imgeda.models.manifest import ImageRecord
 
+# Skip buckets larger than this to avoid O(n^2) blowup on hot sub-hashes
+_MAX_BUCKET_SIZE = 500
+
 
 def find_exact_duplicates(records: list[ImageRecord]) -> dict[str, list[ImageRecord]]:
     """Group records by exact phash match. Returns groups with 2+ members."""
@@ -24,7 +27,8 @@ def find_near_duplicates(
     """Find near-duplicate groups using sub-hash bucketing to avoid O(n^2).
 
     Strategy: split each phash hex string into 4 sub-hashes, bucket by each sub-hash,
-    then compare within buckets only.
+    then compare within buckets only. Buckets exceeding _MAX_BUCKET_SIZE are skipped
+    to prevent quadratic blowup.
     """
     # Filter to hashable records
     hashable = [(rec, rec.phash) for rec in records if rec.phash and not rec.is_corrupt]
@@ -42,7 +46,7 @@ def find_near_duplicates(
     # Find candidate pairs within buckets
     pairs: set[tuple[int, int]] = set()
     for indices in buckets.values():
-        if len(indices) < 2:
+        if len(indices) < 2 or len(indices) > _MAX_BUCKET_SIZE:
             continue
         for i in range(len(indices)):
             for j in range(i + 1, len(indices)):

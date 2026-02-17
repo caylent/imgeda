@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import random
 from pathlib import Path
+from typing import Any
 
 import matplotlib
 
@@ -16,7 +17,7 @@ from imgeda.models.config import PlotConfig  # noqa: E402
 from imgeda.models.manifest import ImageRecord  # noqa: E402
 
 
-def create_figure(config: PlotConfig) -> tuple[Figure, plt.Axes]:
+def create_figure(config: PlotConfig) -> tuple[Figure, Any]:
     fig, ax = plt.subplots(figsize=config.figsize, dpi=config.dpi)
     return fig, ax
 
@@ -40,3 +41,9 @@ def sample_records(records: list[ImageRecord], max_samples: int | None = None) -
 def valid_records(records: list[ImageRecord]) -> list[ImageRecord]:
     """Filter to non-corrupt records."""
     return [r for r in records if not r.is_corrupt]
+
+
+def prepare_records(records: list[ImageRecord], config: PlotConfig) -> list[ImageRecord]:
+    """Filter to valid records and apply sampling from config."""
+    recs = valid_records(records)
+    return sample_records(recs, config.sample)

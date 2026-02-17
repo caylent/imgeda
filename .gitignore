@@ -11,3 +11,7 @@ download_dataset.py
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.claude/
+.DS_Store
+.coverage
+htmlcov/

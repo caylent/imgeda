@@ -4,20 +4,17 @@ from __future__ import annotations
 
 from collections import Counter
 
+import matplotlib.pyplot as plt
+
 from imgeda.core.duplicates import find_exact_duplicates
 from imgeda.models.config import PlotConfig
 from imgeda.models.manifest import ImageRecord
-from imgeda.plotting.base import create_figure, save_figure
+from imgeda.plotting.base import save_figure
 
 
 def plot_duplicates(records: list[ImageRecord], config: PlotConfig) -> str:
     groups = find_exact_duplicates(records)
 
-    fig, axes = create_figure(config)
-    # Re-create with 2 subplots
-    import matplotlib.pyplot as plt
-
-    plt.close(fig)
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=config.figsize, dpi=config.dpi)
 
     # Bar chart: group size distribution

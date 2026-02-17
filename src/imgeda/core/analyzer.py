@@ -63,7 +63,7 @@ def analyze_image(path: str, config: ScanConfig) -> ImageRecord:
         if rgb.width > max_dim or rgb.height > max_dim:
             ratio = max_dim / max(rgb.width, rgb.height)
             new_size = (int(rgb.width * ratio), int(rgb.height * ratio))
-            rgb = rgb.resize(new_size, Image.LANCZOS)
+            rgb = rgb.resize(new_size, Image.Resampling.LANCZOS)
 
         pixels = np.array(rgb, dtype=np.uint8)
 
