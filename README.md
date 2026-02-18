@@ -39,7 +39,14 @@ imgeda plot all -m manifest.jsonl
 imgeda report -m manifest.jsonl
 ```
 
-Or just run `imgeda` with no arguments for an interactive wizard that walks you through everything.
+Or just run `imgeda` with no arguments for an interactive wizard that walks you through everything:
+
+```bash
+# Interactive mode — auto-detects dataset format (YOLO, COCO, VOC, classification, flat)
+imgeda
+```
+
+The wizard detects your dataset structure, shows a summary panel with image counts, splits, and class info, then lets you pick which splits and analyses to run.
 
 ## Features
 
@@ -50,7 +57,8 @@ Or just run `imgeda` with no arguments for an interactive wizard that walks you 
 - **Quality checks**: corrupt files, dark/overexposed images, border artifacts, exact and near-duplicate detection
 - **7 plot types** with automatic large-dataset adaptations
 - **Single-page HTML report** with embedded plots and summary tables
-- **Interactive configurator** for guided setup
+- **Dataset format detection** — auto-detects YOLO, COCO, Pascal VOC, classification, and flat image directories with split-aware scanning
+- **Interactive configurator** with Rich panels, split selection, and smart defaults
 - **Lambda-compatible core** — the analysis functions have zero CLI dependencies, ready for serverless deployment
 
 ## Example Output
