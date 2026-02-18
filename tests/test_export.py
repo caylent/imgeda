@@ -23,6 +23,9 @@ class TestParquetExport:
                 color_mode="RGB",
                 num_channels=3,
                 aspect_ratio=1.3333,
+                camera_make="Canon" if i % 2 == 0 else None,
+                focal_length_35mm=14 if i == 0 else 50,
+                distortion_risk="high" if i == 0 else "low",
                 pixel_stats=PixelStats(
                     mean_r=120.0 + i,
                     mean_g=130.0 + i,
@@ -61,11 +64,20 @@ class TestParquetExport:
         assert "pixel_stats.mean_r" in col_names
         assert "corner_stats.delta" in col_names
         assert "is_corrupt" in col_names
+        assert "camera_make" in col_names
+        assert "focal_length_35mm" in col_names
+        assert "distortion_risk" in col_names
 
         # Verify data
         paths = table.column("path").to_pylist()
         assert paths[0] == "/img_0.jpg"
         assert paths[19] == "/img_19.jpg"
+
+        # Verify EXIF data in parquet
+        assert table.column("camera_make").to_pylist()[0] == "Canon"
+        assert table.column("camera_make").to_pylist()[1] == ""  # None → ""
+        assert table.column("focal_length_35mm").to_pylist()[0] == 14
+        assert table.column("distortion_risk").to_pylist()[0] == "high"
 
     def test_export_empty_records(self, tmp_path: Path) -> None:
         pytest.importorskip("pyarrow")
