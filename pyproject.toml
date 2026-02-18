@@ -32,6 +32,7 @@ dependencies = [
     "imagehash>=4.3",
     "orjson>=3.10",
     "matplotlib>=3.10",
+    "pyyaml>=6.0",
 ]
 
 [project.urls]
@@ -41,6 +42,7 @@ Repository = "https://github.com/caylent/imgeda"
 
 [project.optional-dependencies]
 opencv = ["opencv-python-headless>=4.10"]
+parquet = ["pyarrow>=15.0"]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=6.0",
