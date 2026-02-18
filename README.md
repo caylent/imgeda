@@ -48,6 +48,10 @@ imgeda
 
 The wizard detects your dataset structure, shows a summary panel with image counts, splits, and class info, then lets you pick which splits and analyses to run.
 
+## Demo
+
+[Watch the demo video](docs/images/demo.mp4) — scan, analyze, and visualize 3,680 images in seconds.
+
 ## Features
 
 - **Fast parallel scanning** with multi-core `ProcessPoolExecutor` and Rich progress bars
