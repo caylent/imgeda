@@ -1,0 +1,8 @@
+# imgeda quality gate policy
+# Used with: imgeda gate --manifest manifest.jsonl --policy policy.yml
+
+max_corrupt_pct: 1.0        # Max % of corrupt/unreadable images
+max_overexposed_pct: 5.0    # Max % of overexposed images
+max_underexposed_pct: 5.0   # Max % of dark/underexposed images
+max_duplicate_pct: 10.0     # Max % of exact duplicate images
+min_images_total: 100       # Minimum total image count

@@ -7,6 +7,7 @@ from typing import Optional
 import typer
 
 from imgeda.cli.check import check_app
+from imgeda.cli.export import export_app
 from imgeda.cli.plot import plot_app
 
 app = typer.Typer(
@@ -17,6 +18,7 @@ app = typer.Typer(
 )
 app.add_typer(plot_app, name="plot", help="Generate plots from a manifest.")
 app.add_typer(check_app, name="check", help="Check for issues in a manifest.")
+app.add_typer(export_app, name="export", help="Export manifest to other formats.")
 
 
 def _version_callback(value: bool) -> None:
@@ -47,7 +49,11 @@ def main(
 # Import and register commands
 from imgeda.cli.scan import scan  # noqa: E402
 from imgeda.cli.report import report, info  # noqa: E402
+from imgeda.cli.diff import diff  # noqa: E402
+from imgeda.cli.gate import gate  # noqa: E402
 
 app.command()(scan)
 app.command()(info)
 app.command()(report)
+app.command()(diff)
+app.command()(gate)
