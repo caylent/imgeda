@@ -37,6 +37,15 @@ imgeda plot all -m manifest.jsonl
 
 # Generate an HTML report
 imgeda report -m manifest.jsonl
+
+# Compare two manifests
+imgeda diff --old v1.jsonl --new v2.jsonl
+
+# Run quality gate (exit code 2 on failure — CI-friendly)
+imgeda gate -m manifest.jsonl -p policy.yml
+
+# Export to Parquet (requires: pip install imgeda[parquet])
+imgeda export parquet -m manifest.jsonl -o manifest.parquet
 ```
 
 Or just run `imgeda` with no arguments for an interactive wizard that walks you through everything:
@@ -60,6 +69,10 @@ The wizard detects your dataset structure, shows a summary panel with image coun
 - **Dataset format detection** — auto-detects YOLO, COCO, Pascal VOC, classification, and flat image directories with split-aware scanning
 - **Interactive configurator** with Rich panels, split selection, and smart defaults
 - **Lambda-compatible core** — the analysis functions have zero CLI dependencies, ready for serverless deployment
+- **Manifest diff** — compare two manifests to track dataset changes over time
+- **Quality gate** — policy-as-code YAML rules with CI-friendly exit codes
+- **Parquet export** — streaming JSONL-to-Parquet conversion with flattened nested fields
+- **AWS serverless deployment** — CDK + Step Functions + Lambda for S3-scale analysis
 
 ## Example Output
 
@@ -91,7 +104,7 @@ Histogram with reference lines at common ratios (1:1, 4:3, 3:2, 16:9).
 
 ### Channel Distributions
 
-Box plots of mean R/G/B channel values across the dataset.
+Violin plots of mean R/G/B channel values across the dataset.
 
 ![Channels](https://raw.githubusercontent.com/caylent/imgeda/main/docs/examples/channels.png)
 
@@ -152,6 +165,41 @@ Common options:
 ### `imgeda report -m <MANIFEST>`
 
 Generate a single-page HTML report with embedded plots and statistics.
+
+### `imgeda diff --old <MANIFEST> --new <MANIFEST>`
+
+Compare two manifests and show added, removed, and changed images with field-level diffs.
+
+```
+Options:
+  -o, --out PATH    Output JSON path (optional)
+```
+
+### `imgeda gate -m <MANIFEST> -p <POLICY>`
+
+Evaluate a manifest against a YAML quality policy. Exit code 0 = pass, 2 = fail.
+
+```
+Options:
+  -o, --out PATH    Output JSON path (optional)
+```
+
+Example policy (`policy.yml`):
+```yaml
+max_corrupt_pct: 1.0
+max_overexposed_pct: 5.0
+max_underexposed_pct: 5.0
+max_duplicate_pct: 10.0
+min_images_total: 100
+```
+
+### `imgeda export parquet -m <MANIFEST> -o <OUTPUT>`
+
+Export manifest to Parquet format with flattened nested fields. Requires `pip install imgeda[parquet]`.
+
+## Architecture
+
+See [docs/architecture.md](docs/architecture.md) for detailed system diagrams including the local CLI flow, AWS serverless flow, CI/CD quality gate flow, and full module dependency graph.
 
 ## Manifest Format
 

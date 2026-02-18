@@ -66,7 +66,19 @@ fallback-version = "0.0.0"
 packages = ["src/imgeda"]
 
 [tool.hatch.build.targets.sdist]
-exclude = ["docs/examples/", "data/", "plots/", ".claude/"]
+exclude = [
+    "cdk/",
+    "docs/",
+    "examples/",
+    "data/",
+    "plots/",
+    "tests/",
+    ".claude/",
+    ".github/",
+    "CLAUDE.md",
+    ".python-version",
+    "uv.lock",
+]
 
 [tool.ruff]
 target-version = "py310"
