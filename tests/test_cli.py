@@ -121,6 +121,101 @@ class TestCLI:
         assert "<img" in content  # embedded plots
 
 
+class TestPlotCLI:
+    @pytest.fixture
+    def manifest_for_plots(self, tmp_path: Path) -> tuple[str, str]:
+        """Create a manifest with fully-populated records for plot testing.
+
+        Returns (manifest_path, plots_output_dir).
+        """
+        manifest = tmp_path / "manifest.jsonl"
+        plots_dir = str(tmp_path / "plots")
+        meta = ManifestMeta(input_dir="/data", created_at="now")
+        create_manifest(str(manifest), meta)
+        records = [
+            ImageRecord(
+                path=f"/data/img_{i}.jpg",
+                filename=f"img_{i}.jpg",
+                width=100 + i * 50,
+                height=80 + i * 30,
+                format="JPEG",
+                color_mode="RGB",
+                file_size_bytes=5000 + i * 1000,
+                aspect_ratio=(100 + i * 50) / (80 + i * 30),
+                pixel_stats=PixelStats(
+                    mean_r=100.0 + i * 5,
+                    mean_g=110.0 + i * 3,
+                    mean_b=120.0 + i * 2,
+                    mean_brightness=110.0 + i * 3,
+                ),
+                corner_stats=CornerStats(
+                    corner_mean=80.0 + i,
+                    center_mean=130.0 + i,
+                    delta=50.0 + i,
+                ),
+                phash="abcd1234" if i < 3 else f"hash_{i:04x}",
+            )
+            for i in range(10)
+        ]
+        append_records(str(manifest), records)
+        return str(manifest), plots_dir
+
+    @pytest.fixture
+    def empty_manifest(self, tmp_path: Path) -> str:
+        """Create a manifest with metadata but no records."""
+        manifest = tmp_path / "empty_manifest.jsonl"
+        meta = ManifestMeta(input_dir="/data", created_at="now")
+        create_manifest(str(manifest), meta)
+        return str(manifest)
+
+    @pytest.mark.parametrize(
+        "subcommand",
+        [
+            "dimensions",
+            "file-size",
+            "aspect-ratio",
+            "brightness",
+            "channels",
+            "artifacts",
+            "duplicates",
+            "all",
+        ],
+    )
+    def test_plot_subcommand(self, manifest_for_plots: tuple[str, str], subcommand: str) -> None:
+        manifest, plots_dir = manifest_for_plots
+        result = runner.invoke(app, ["plot", subcommand, "-m", manifest, "-o", plots_dir])
+        assert result.exit_code == 0
+        assert Path(plots_dir).exists()
+
+    def test_plot_missing_manifest(self, tmp_path: Path) -> None:
+        result = runner.invoke(
+            app,
+            [
+                "plot",
+                "dimensions",
+                "-m",
+                str(tmp_path / "nonexistent.jsonl"),
+                "-o",
+                str(tmp_path / "plots"),
+            ],
+        )
+        assert result.exit_code != 0
+
+    def test_plot_empty_manifest(self, empty_manifest: str, tmp_path: Path) -> None:
+        result = runner.invoke(
+            app,
+            [
+                "plot",
+                "dimensions",
+                "-m",
+                empty_manifest,
+                "-o",
+                str(tmp_path / "plots"),
+            ],
+        )
+        assert result.exit_code != 0
+
+
 class TestCheckCommands:
     @pytest.fixture
     def manifest_with_issues(self, tmp_path: Path) -> str:
