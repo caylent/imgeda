@@ -49,6 +49,7 @@ dev = [
     "pytest-timeout>=2.3",
     "ruff>=0.9",
     "mypy>=1.14",
+    "moto[s3]>=5.0",
 ]
 
 [project.scripts]
@@ -91,3 +92,8 @@ strict = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 timeout = 30
+markers = [
+    "integration: Local integration tests (full CLI pipeline, no AWS)",
+    "aws: Tests requiring real AWS credentials",
+    "slow: Long-running tests",
+]

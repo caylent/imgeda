@@ -39,7 +39,7 @@ def handle(event: dict[str, Any], context: Any) -> dict[str, Any]:
     Returns:
         plots: List of S3 keys for uploaded plot PNGs
     """
-    import boto3  # type: ignore[import-not-found]
+    import boto3  # type: ignore[import-untyped]
 
     bucket = event["bucket"]
     manifest_key: str = event["manifest_key"]
@@ -68,6 +68,7 @@ def handle(event: dict[str, Any], context: Any) -> dict[str, Any]:
         return {"plots": []}
 
     uploaded_keys: list[str] = []
+    skipped: list[str] = []
 
     with tempfile.TemporaryDirectory(prefix="imgeda_plots_") as tmp_dir:
         config = PlotConfig(output_dir=tmp_dir)
@@ -80,8 +81,8 @@ def handle(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
                 s3.upload_file(local_path, bucket, s3_key)
                 uploaded_keys.append(s3_key)
-            except Exception:
-                # Skip plots that fail (e.g., no data for duplicates plot)
+            except Exception as exc:
+                skipped.append(f"{plot_fn.__name__}: {exc!r}")
                 continue
 
-    return {"plots": uploaded_keys}
+    return {"plots": uploaded_keys, "skipped": skipped}

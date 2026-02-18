@@ -20,25 +20,31 @@ def plot_aspect_ratio(records: list[ImageRecord], config: PlotConfig) -> str:
 
     fig, ax = create_figure(config)
 
-    num_bins = min(80, max(20, len(ratios) // 5)) if ratios else 20
-    ax.hist(ratios, bins=num_bins, color=COLORS["primary"], edgecolor="white", linewidth=0.3)
+    num_bins = min(60, max(20, len(ratios) // 5)) if ratios else 20
+    ax.hist(
+        ratios, bins=num_bins, color=COLORS["primary"], edgecolor="white", linewidth=0.5, alpha=0.85
+    )
 
-    for label, val in COMMON_RATIOS.items():
-        ax.axvline(val, color=COLORS["danger"], linestyle="--", alpha=0.6, linewidth=1)
-        ax.text(
-            val,
-            ax.get_ylim()[1] * 1.02,
+    # Ratio reference lines — staggered vertically to prevent overlap
+    y_max = ax.get_ylim()[1]
+    y_fracs = [0.94, 0.82, 0.70, 0.58]
+    for i, (label, val) in enumerate(COMMON_RATIOS.items()):
+        ax.axvline(val, color=COLORS["danger"], linestyle=":", alpha=0.5, linewidth=1.2)
+        ax.annotate(
             label,
-            fontsize=8,
+            xy=(val, y_max * y_fracs[i]),
+            xytext=(val + 0.08, y_max * y_fracs[i]),
+            fontsize=12,
+            fontweight="bold",
             color=COLORS["danger"],
-            ha="center",
-            va="bottom",
-            clip_on=False,
+            va="center",
+            arrowprops=dict(arrowstyle="-|>", color=COLORS["danger"], lw=1.0, alpha=0.6),
+            bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.8),
         )
 
     ax.set_xlabel("Aspect Ratio (width / height)")
     ax.set_ylabel("Count")
-    ax.set_title(f"Aspect Ratio Distribution ({len(recs):,} images)")
+    ax.set_title(f"Aspect Ratio Distribution  ({len(recs):,} images)")
     fig.tight_layout()
 
     return save_figure(fig, "aspect_ratio", config)

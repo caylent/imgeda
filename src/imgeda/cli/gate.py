@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Optional
 
 import orjson
@@ -23,6 +24,13 @@ def gate(
 
     Exit code 0 = all checks pass, exit code 2 = one or more checks fail.
     """
+    if not Path(manifest).exists():
+        console.print(f"[red]Manifest not found: {manifest}[/red]")
+        raise typer.Exit(1)
+    if not Path(policy_path).exists():
+        console.print(f"[red]Policy file not found: {policy_path}[/red]")
+        raise typer.Exit(1)
+
     _, records = read_manifest(manifest)
     policy = load_policy(policy_path)
     result = evaluate_policy(records, policy)

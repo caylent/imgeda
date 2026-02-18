@@ -5,24 +5,37 @@ import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
 import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import { Construct } from 'constructs';
+import * as path from 'path';
+
+export interface ImgedaStackProps extends cdk.StackProps {
+  /** Auto-delete bucket contents on stack destroy. Use for dev/test only. */
+  readonly autoCleanup?: boolean;
+}
 
 export class ImgedaStack extends cdk.Stack {
   public readonly inputBucket: s3.Bucket;
   public readonly outputBucket: s3.Bucket;
   public readonly stateMachine: sfn.StateMachine;
 
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  constructor(scope: Construct, id: string, props?: ImgedaStackProps) {
     super(scope, id, props);
+
+    const autoCleanup = props?.autoCleanup ?? false;
+    const removalPolicy = autoCleanup
+      ? cdk.RemovalPolicy.DESTROY
+      : cdk.RemovalPolicy.RETAIN;
 
     // --- S3 Buckets ---
     this.inputBucket = new s3.Bucket(this, 'InputBucket', {
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      removalPolicy,
+      autoDeleteObjects: autoCleanup,
       encryption: s3.BucketEncryption.S3_MANAGED,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
     });
 
     this.outputBucket = new s3.Bucket(this, 'OutputBucket', {
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      removalPolicy,
+      autoDeleteObjects: autoCleanup,
       encryption: s3.BucketEncryption.S3_MANAGED,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       lifecycleRules: [
@@ -33,74 +46,68 @@ export class ImgedaStack extends cdk.Stack {
       ],
     });
 
-    // --- Lambda Layer ---
-    const imgedaLayer = new lambda.LayerVersion(this, 'ImgedaLayer', {
-      code: lambda.Code.fromAsset('../', {
-        bundling: {
-          image: lambda.Runtime.PYTHON_3_12.bundlingImage,
-          command: [
-            'bash', '-c',
-            'pip install . -t /asset-output/python && cp -r src/imgeda /asset-output/python/',
-          ],
-        },
-      }),
-      compatibleRuntimes: [lambda.Runtime.PYTHON_3_12],
-      description: 'imgeda package and dependencies',
+    // --- Docker Image Lambda ---
+    // All 5 Lambda functions share one Docker image built from lambda/Dockerfile.
+    // Each function sets an ACTION env var to route to the correct handler.
+    const projectRoot = path.resolve(__dirname, '../..');
+    const imageCode = lambda.DockerImageCode.fromImageAsset(projectRoot, {
+      file: 'lambda/Dockerfile',
+      exclude: [
+        'cdk',
+        'tests',
+        '.venv',
+        '.git',
+        'node_modules',
+        '.github',
+        '.claude',
+        'dist',
+        'build',
+        '*.egg-info',
+        '.ruff_cache',
+        '.mypy_cache',
+        '.pytest_cache',
+        'htmlcov',
+      ],
     });
 
-    // --- Lambda Functions ---
-    const commonLambdaProps: Partial<lambda.FunctionProps> = {
-      runtime: lambda.Runtime.PYTHON_3_12,
+    const listImagesFn = new lambda.DockerImageFunction(this, 'ListImagesFn', {
+      code: imageCode,
       memorySize: 1024,
       timeout: cdk.Duration.minutes(5),
-      layers: [imgedaLayer],
-      handler: 'imgeda.lambda_handler.handler.handler',
-    };
-
-    const listImagesFn = new lambda.Function(this, 'ListImagesFn', {
-      ...commonLambdaProps,
-      code: lambda.Code.fromInline('# handler in layer'),
-      handler: 'imgeda.lambda_handler.handler.handler',
       description: 'List images in S3 bucket and split into batches',
-      timeout: cdk.Duration.minutes(5),
       environment: { ACTION: 'list_images' },
     });
 
-    const analyzeBatchFn = new lambda.Function(this, 'AnalyzeBatchFn', {
-      ...commonLambdaProps,
-      code: lambda.Code.fromInline('# handler in layer'),
-      handler: 'imgeda.lambda_handler.handler.handler',
-      description: 'Analyze a batch of images',
+    const analyzeBatchFn = new lambda.DockerImageFunction(this, 'AnalyzeBatchFn', {
+      code: imageCode,
       memorySize: 2048,
       timeout: cdk.Duration.minutes(10),
       ephemeralStorageSize: cdk.Size.gibibytes(2),
+      description: 'Analyze a batch of images',
       environment: { ACTION: 'analyze_batch' },
     });
 
-    const mergeManifestsFn = new lambda.Function(this, 'MergeManifestsFn', {
-      ...commonLambdaProps,
-      code: lambda.Code.fromInline('# handler in layer'),
-      handler: 'imgeda.lambda_handler.handler.handler',
-      description: 'Merge partial manifests into final JSONL',
+    const mergeManifestsFn = new lambda.DockerImageFunction(this, 'MergeManifestsFn', {
+      code: imageCode,
+      memorySize: 1024,
       timeout: cdk.Duration.minutes(10),
+      description: 'Merge partial manifests into final JSONL',
       environment: { ACTION: 'merge_manifests' },
     });
 
-    const aggregateFn = new lambda.Function(this, 'AggregateFn', {
-      ...commonLambdaProps,
-      code: lambda.Code.fromInline('# handler in layer'),
-      handler: 'imgeda.lambda_handler.handler.handler',
+    const aggregateFn = new lambda.DockerImageFunction(this, 'AggregateFn', {
+      code: imageCode,
+      memorySize: 1024,
+      timeout: cdk.Duration.minutes(5),
       description: 'Compute aggregate statistics from manifest',
       environment: { ACTION: 'aggregate' },
     });
 
-    const generatePlotsFn = new lambda.Function(this, 'GeneratePlotsFn', {
-      ...commonLambdaProps,
-      code: lambda.Code.fromInline('# handler in layer'),
-      handler: 'imgeda.lambda_handler.handler.handler',
-      description: 'Generate visualization plots from manifest',
+    const generatePlotsFn = new lambda.DockerImageFunction(this, 'GeneratePlotsFn', {
+      code: imageCode,
       memorySize: 2048,
       timeout: cdk.Duration.minutes(10),
+      description: 'Generate visualization plots from manifest',
       environment: { ACTION: 'generate_plots' },
     });
 
@@ -114,36 +121,79 @@ export class ImgedaStack extends cdk.Stack {
     this.outputBucket.grantReadWrite(generatePlotsFn);
 
     // --- Step Functions Workflow ---
+    //
+    // Execution input schema:
+    // {
+    //   "input_bucket": "<bucket-with-images>",
+    //   "prefix": "images/",
+    //   "output_bucket": "<bucket-for-results>"
+    // }
+    //
+    // Each task uses `resultPath` to preserve the full state across steps,
+    // and `payload` to construct the handler-specific input from state fields.
+
     const listImagesTask = new tasks.LambdaInvoke(this, 'ListImages', {
       lambdaFunction: listImagesFn,
-      outputPath: '$.Payload',
+      payload: sfn.TaskInput.fromObject({
+        'bucket.$': '$.input_bucket',
+        'prefix.$': '$.prefix',
+      }),
+      resultPath: '$.list_result',
+      payloadResponseOnly: true,
     });
 
     const analyzeBatchTask = new tasks.LambdaInvoke(this, 'AnalyzeBatch', {
       lambdaFunction: analyzeBatchFn,
-      outputPath: '$.Payload',
+      payloadResponseOnly: true,
     });
 
     const analyzeMap = new sfn.Map(this, 'AnalyzeBatches', {
-      itemsPath: '$.batches',
+      itemsPath: '$.list_result.batches',
       maxConcurrency: 10,
       resultPath: '$.analyze_results',
+      itemSelector: {
+        'source_bucket.$': '$.input_bucket',
+        'keys.$': '$$.Map.Item.Value',
+        'output_bucket.$': '$.output_bucket',
+        'output_key.$':
+          "States.Format('partials/batch-{}.jsonl', $$.Map.Item.Index)",
+      },
     });
     analyzeMap.itemProcessor(analyzeBatchTask);
 
     const mergeTask = new tasks.LambdaInvoke(this, 'MergeManifests', {
       lambdaFunction: mergeManifestsFn,
-      outputPath: '$.Payload',
+      payload: sfn.TaskInput.fromObject({
+        'bucket.$': '$.output_bucket',
+        'analyze_results.$': '$.analyze_results',
+        'output_key': 'manifests/manifest.jsonl',
+        'input_dir.$':
+          "States.Format('s3://{}/{}', $.input_bucket, $.prefix)",
+      }),
+      resultPath: '$.merge_result',
+      payloadResponseOnly: true,
     });
 
     const aggregateTask = new tasks.LambdaInvoke(this, 'Aggregate', {
       lambdaFunction: aggregateFn,
-      outputPath: '$.Payload',
+      payload: sfn.TaskInput.fromObject({
+        'bucket.$': '$.output_bucket',
+        'manifest_key.$': '$.merge_result.output_key',
+        'output_key': 'summary/summary.json',
+      }),
+      resultPath: '$.aggregate_result',
+      payloadResponseOnly: true,
     });
 
     const generatePlotsTask = new tasks.LambdaInvoke(this, 'GeneratePlots', {
       lambdaFunction: generatePlotsFn,
-      outputPath: '$.Payload',
+      payload: sfn.TaskInput.fromObject({
+        'bucket.$': '$.output_bucket',
+        'manifest_key.$': '$.merge_result.output_key',
+        'output_prefix': 'plots/',
+      }),
+      resultPath: '$.plots_result',
+      payloadResponseOnly: true,
     });
 
     const definition = listImagesTask

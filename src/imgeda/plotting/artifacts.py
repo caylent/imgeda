@@ -14,28 +14,34 @@ def plot_artifacts(records: list[ImageRecord], config: PlotConfig) -> str:
 
     fig, ax = create_figure(config)
 
-    ax.hist(deltas, bins=80, color=COLORS["primary"], edgecolor="white", linewidth=0.3)
+    ax.hist(deltas, bins=60, color=COLORS["primary"], edgecolor="white", linewidth=0.5, alpha=0.85)
     ax.axvline(
         threshold,
         color=COLORS["danger"],
         linestyle="--",
         alpha=0.8,
+        linewidth=1.5,
         label=f"Threshold ({threshold:.0f})",
     )
 
     artifact_count = sum(1 for d in deltas if d > threshold)
+    y_max = ax.get_ylim()[1]
     ax.annotate(
-        f"{artifact_count:,} images above threshold",
-        xy=(threshold, ax.get_ylim()[1] * 0.8),
-        fontsize=9,
+        f"{artifact_count:,} flagged",
+        xy=(threshold, y_max * 0.85),
+        xytext=(threshold * 1.3 if threshold > 0 else 10, y_max * 0.85),
+        fontsize=13,
+        fontweight="bold",
         color=COLORS["danger"],
-        bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=COLORS["danger"], alpha=0.8),
+        va="center",
+        arrowprops=dict(arrowstyle="-|>", color=COLORS["danger"], lw=1.2),
+        bbox=dict(boxstyle="round,pad=0.4", fc="white", ec=COLORS["danger"], alpha=0.9, lw=1.2),
     )
 
-    ax.set_xlabel("Corner-Center Brightness Delta")
+    ax.set_xlabel("Corner\u2013Center Brightness Delta")
     ax.set_ylabel("Count")
-    ax.set_title(f"Border Artifact Analysis ({len(recs):,} images)")
-    ax.legend()
+    ax.set_title(f"Border Artifact Analysis  ({len(recs):,} images)")
+    ax.legend(loc="upper right", framealpha=0.9)
     fig.tight_layout()
 
     return save_figure(fig, "artifacts", config)

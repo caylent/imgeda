@@ -1,60 +1,47 @@
-"""Tests for Lambda handler router and individual action handlers."""
+"""Tests for Lambda handler router and individual action handlers.
+
+Uses moto to provide a realistic mock S3 backend instead of blind MagicMock patching.
+"""
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
+import io
 from typing import Any
-from unittest.mock import MagicMock, patch
 
+import boto3
 import numpy as np
 import orjson
 import pytest
+from moto import mock_aws
 from PIL import Image
 
 from imgeda.lambda_handler.handler import handler
 from imgeda.models.manifest import MANIFEST_META_KEY, ImageRecord, ManifestMeta
 
-# Inject a mock boto3 into sys.modules so lazy imports inside handlers resolve
-_mock_boto3 = MagicMock()
-sys.modules.setdefault("boto3", _mock_boto3)
-
 
 # ---------------------------------------------------------------------------
-# Fixtures
+# Helpers
 # ---------------------------------------------------------------------------
 
-
-@pytest.fixture(autouse=True)
-def _reset_boto3_mock() -> None:
-    """Reset the shared boto3 mock before each test."""
-    _mock_boto3.reset_mock()
+BUCKET = "test-bucket"
+OUTPUT_BUCKET = "output-bucket"
 
 
-@pytest.fixture()
-def mock_s3() -> MagicMock:
-    """Return a fresh mock S3 client wired into the boto3 mock."""
-    client = MagicMock()
-    _mock_boto3.client.return_value = client
-    return client
+def _create_test_image_bytes(width: int = 100, height: int = 100, fmt: str = "JPEG") -> bytes:
+    """Create a small test image and return its bytes."""
+    arr = np.random.randint(60, 200, (height, width, 3), dtype=np.uint8)
+    img = Image.fromarray(arr)
+    buf = io.BytesIO()
+    img.save(buf, format=fmt)
+    return buf.getvalue()
 
 
-@pytest.fixture()
-def test_image_path(tmp_path: Path) -> str:
-    """Create a single valid test image and return its path."""
-    arr = np.random.randint(60, 200, (100, 100, 3), dtype=np.uint8)
-    path = tmp_path / "test.jpg"
-    Image.fromarray(arr).save(path)
-    return str(path)
-
-
-@pytest.fixture()
-def sample_records() -> list[dict[str, Any]]:
-    """Return a list of sample ImageRecord dicts."""
+def _make_sample_records(count: int = 5) -> list[dict[str, Any]]:
+    """Build a list of sample ImageRecord dicts."""
     records = []
-    for i in range(5):
+    for i in range(count):
         rec = ImageRecord(
-            path=f"s3://bucket/img_{i}.jpg",
+            path=f"s3://{BUCKET}/img_{i}.jpg",
             filename=f"img_{i}.jpg",
             file_size_bytes=1000 * (i + 1),
             width=640,
@@ -68,21 +55,43 @@ def sample_records() -> list[dict[str, Any]]:
     return records
 
 
-@pytest.fixture()
-def manifest_body(sample_records: list[dict[str, Any]]) -> bytes:
-    """Build a JSONL manifest (meta + records) as bytes."""
-    meta = ManifestMeta(input_dir="s3://bucket/images/", total_files=len(sample_records))
+def _build_manifest_body(records: list[dict[str, Any]], input_dir: str = "") -> bytes:
+    """Build a JSONL manifest (meta header + records) as bytes."""
+    meta = ManifestMeta(input_dir=input_dir or f"s3://{BUCKET}/images/", total_files=len(records))
     lines = [orjson.dumps(meta.to_dict())]
-    for rec_dict in sample_records:
+    for rec_dict in records:
         lines.append(orjson.dumps(rec_dict))
     return b"\n".join(lines) + b"\n"
 
 
-def _s3_body(data: bytes) -> dict[str, Any]:
-    """Wrap bytes into the shape returned by s3.get_object."""
-    body_mock = MagicMock()
-    body_mock.read.return_value = data
-    return {"Body": body_mock}
+def _upload_manifest(s3_client: Any, bucket: str, key: str, records: list[dict[str, Any]]) -> None:
+    """Upload a JSONL manifest to mock S3."""
+    body = _build_manifest_body(records)
+    s3_client.put_object(Bucket=bucket, Key=key, Body=body)
+
+
+def _s3_get_body(s3_client: Any, bucket: str, key: str) -> bytes:
+    """Read and return the full body of an S3 object."""
+    resp = s3_client.get_object(Bucket=bucket, Key=key)
+    return resp["Body"].read()
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def s3_client() -> Any:
+    """Return a boto3 S3 client connected to the moto mock."""
+    return boto3.client("s3", region_name="us-east-1")
+
+
+@pytest.fixture()
+def setup_buckets(s3_client: Any) -> None:
+    """Create the input and output buckets in mock S3."""
+    s3_client.create_bucket(Bucket=BUCKET)
+    s3_client.create_bucket(Bucket=OUTPUT_BUCKET)
 
 
 # ---------------------------------------------------------------------------
@@ -100,37 +109,109 @@ class TestHandlerRouter:
         result = handler({}, None)
         assert result["statusCode"] == 400
 
-    @patch("imgeda.lambda_handler.handlers.list_images.handle")
-    def test_routes_to_list_images(self, mock_handle: MagicMock) -> None:
-        mock_handle.return_value = {"batches": [], "total_images": 0}
-        result = handler({"action": "list_images", "bucket": "b"}, None)
-        mock_handle.assert_called_once()
-        assert result["total_images"] == 0
+    @mock_aws
+    def test_routes_via_action_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """When event has no 'action', fall back to ACTION env var (CDK path)."""
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=BUCKET)
+        s3.put_object(Bucket=BUCKET, Key="test.jpg", Body=b"data")
 
-    @patch("imgeda.lambda_handler.handlers.analyze_batch.handle")
-    def test_routes_to_analyze_batch(self, mock_handle: MagicMock) -> None:
-        mock_handle.return_value = {"processed": 0, "errors": 0, "output_key": "k"}
-        result = handler({"action": "analyze_batch"}, None)
-        mock_handle.assert_called_once()
+        monkeypatch.setenv("ACTION", "list_images")
+        result = handler({"bucket": BUCKET}, None)
+        assert result["total_images"] == 1
+
+    def test_env_var_fallback_case_insensitive(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """ACTION env var should be lowercased for matching."""
+        monkeypatch.setenv("ACTION", "NONEXISTENT")
+        result = handler({}, None)
+        assert result["statusCode"] == 400
+        assert "nonexistent" in result["body"]
+
+    @mock_aws
+    def test_routes_to_list_images(self) -> None:
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=BUCKET)
+        s3.put_object(Bucket=BUCKET, Key="img.jpg", Body=b"data")
+
+        result = handler({"action": "list_images", "bucket": BUCKET}, None)
+        assert result["total_images"] == 1
+        assert len(result["batches"]) == 1
+
+    @mock_aws
+    def test_routes_to_analyze_batch(self) -> None:
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=BUCKET)
+        s3.create_bucket(Bucket=OUTPUT_BUCKET)
+        img_bytes = _create_test_image_bytes()
+        s3.put_object(Bucket=BUCKET, Key="photo.jpg", Body=img_bytes)
+
+        result = handler(
+            {
+                "action": "analyze_batch",
+                "source_bucket": BUCKET,
+                "keys": ["photo.jpg"],
+                "output_bucket": OUTPUT_BUCKET,
+                "output_key": "partials/batch_0.jsonl",
+            },
+            None,
+        )
         assert "processed" in result
+        assert result["processed"] == 1
 
-    @patch("imgeda.lambda_handler.handlers.merge_manifests.handle")
-    def test_routes_to_merge_manifests(self, mock_handle: MagicMock) -> None:
-        mock_handle.return_value = {"total_records": 0, "output_key": "k"}
-        handler({"action": "merge_manifests"}, None)
-        mock_handle.assert_called_once()
+    @mock_aws
+    def test_routes_to_merge_manifests(self) -> None:
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=OUTPUT_BUCKET)
+        records = _make_sample_records(2)
+        part = b"\n".join(orjson.dumps(r) for r in records) + b"\n"
+        s3.put_object(Bucket=OUTPUT_BUCKET, Key="partials/p.jsonl", Body=part)
 
-    @patch("imgeda.lambda_handler.handlers.aggregate.handle")
-    def test_routes_to_aggregate(self, mock_handle: MagicMock) -> None:
-        mock_handle.return_value = {"output_key": "k", "summary": {}}
-        handler({"action": "aggregate"}, None)
-        mock_handle.assert_called_once()
+        result = handler(
+            {
+                "action": "merge_manifests",
+                "bucket": OUTPUT_BUCKET,
+                "partial_keys": ["partials/p.jsonl"],
+                "output_key": "manifest.jsonl",
+            },
+            None,
+        )
+        assert result["total_records"] == 2
 
-    @patch("imgeda.lambda_handler.handlers.generate_plots.handle")
-    def test_routes_to_generate_plots(self, mock_handle: MagicMock) -> None:
-        mock_handle.return_value = {"plots": []}
-        handler({"action": "generate_plots"}, None)
-        mock_handle.assert_called_once()
+    @mock_aws
+    def test_routes_to_aggregate(self) -> None:
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=OUTPUT_BUCKET)
+        records = _make_sample_records(3)
+        _upload_manifest(s3, OUTPUT_BUCKET, "manifest.jsonl", records)
+
+        result = handler(
+            {
+                "action": "aggregate",
+                "bucket": OUTPUT_BUCKET,
+                "manifest_key": "manifest.jsonl",
+                "output_key": "summary.json",
+            },
+            None,
+        )
+        assert result["summary"]["total_images"] == 3
+
+    @mock_aws
+    def test_routes_to_generate_plots(self) -> None:
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=OUTPUT_BUCKET)
+        records = _make_sample_records(3)
+        _upload_manifest(s3, OUTPUT_BUCKET, "manifest.jsonl", records)
+
+        result = handler(
+            {
+                "action": "generate_plots",
+                "bucket": OUTPUT_BUCKET,
+                "manifest_key": "manifest.jsonl",
+                "output_prefix": "plots/",
+            },
+            None,
+        )
+        assert isinstance(result["plots"], list)
 
 
 # ---------------------------------------------------------------------------
@@ -139,23 +220,20 @@ class TestHandlerRouter:
 
 
 class TestListImages:
-    def test_list_images_basic(self, mock_s3: MagicMock) -> None:
+    @mock_aws
+    def test_list_images_basic(self) -> None:
         from imgeda.lambda_handler.handlers.list_images import handle
 
-        mock_paginator = MagicMock()
-        mock_s3.get_paginator.return_value = mock_paginator
-        mock_paginator.paginate.return_value = [
-            {
-                "Contents": [
-                    {"Key": "images/photo1.jpg"},
-                    {"Key": "images/photo2.png"},
-                    {"Key": "images/readme.txt"},
-                    {"Key": "images/photo3.jpeg"},
-                ]
-            }
-        ]
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=BUCKET)
 
-        event = {"bucket": "my-bucket", "prefix": "images/", "batch_size": 2}
+        # Upload a mix of image and non-image files
+        s3.put_object(Bucket=BUCKET, Key="images/photo1.jpg", Body=b"jpg")
+        s3.put_object(Bucket=BUCKET, Key="images/photo2.png", Body=b"png")
+        s3.put_object(Bucket=BUCKET, Key="images/readme.txt", Body=b"txt")
+        s3.put_object(Bucket=BUCKET, Key="images/photo3.jpeg", Body=b"jpeg")
+
+        event = {"bucket": BUCKET, "prefix": "images/", "batch_size": 2}
         result = handle(event, None)
 
         assert result["total_images"] == 3  # .txt excluded
@@ -163,34 +241,50 @@ class TestListImages:
         assert len(result["batches"][0]) == 2
         assert len(result["batches"][1]) == 1
 
-    def test_list_images_empty_bucket(self, mock_s3: MagicMock) -> None:
+    @mock_aws
+    def test_list_images_empty_bucket(self) -> None:
         from imgeda.lambda_handler.handlers.list_images import handle
 
-        mock_paginator = MagicMock()
-        mock_s3.get_paginator.return_value = mock_paginator
-        mock_paginator.paginate.return_value = [{}]
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=BUCKET)
 
-        result = handle({"bucket": "empty"}, None)
+        result = handle({"bucket": BUCKET}, None)
         assert result["total_images"] == 0
         assert result["batches"] == []
 
-    def test_list_images_custom_extensions(self, mock_s3: MagicMock) -> None:
+    @mock_aws
+    def test_list_images_custom_extensions(self) -> None:
         from imgeda.lambda_handler.handlers.list_images import handle
 
-        mock_paginator = MagicMock()
-        mock_s3.get_paginator.return_value = mock_paginator
-        mock_paginator.paginate.return_value = [
-            {
-                "Contents": [
-                    {"Key": "a.tiff"},
-                    {"Key": "b.jpg"},
-                    {"Key": "c.png"},
-                ]
-            }
-        ]
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=BUCKET)
 
-        result = handle({"bucket": "b", "extensions": [".tiff"]}, None)
+        s3.put_object(Bucket=BUCKET, Key="a.tiff", Body=b"tiff")
+        s3.put_object(Bucket=BUCKET, Key="b.jpg", Body=b"jpg")
+        s3.put_object(Bucket=BUCKET, Key="c.png", Body=b"png")
+
+        result = handle({"bucket": BUCKET, "extensions": [".tiff"]}, None)
         assert result["total_images"] == 1
+        assert result["batches"][0] == ["a.tiff"]
+
+    @mock_aws
+    def test_list_images_pagination(self) -> None:
+        """Verify list_images handles many objects (tests paginator path)."""
+        from imgeda.lambda_handler.handlers.list_images import handle
+
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=BUCKET)
+
+        # Upload 25 images to force chunking with default batch_size=20
+        for i in range(25):
+            s3.put_object(Bucket=BUCKET, Key=f"img_{i:03d}.jpg", Body=b"data")
+
+        result = handle({"bucket": BUCKET}, None)
+        assert result["total_images"] == 25
+        # Default batch_size is 20 -> 2 batches: [20, 5]
+        assert len(result["batches"]) == 2
+        assert len(result["batches"][0]) == 20
+        assert len(result["batches"][1]) == 5
 
 
 # ---------------------------------------------------------------------------
@@ -199,20 +293,22 @@ class TestListImages:
 
 
 class TestAnalyzeBatch:
-    def test_analyze_batch_basic(self, mock_s3: MagicMock, test_image_path: str) -> None:
+    @mock_aws
+    def test_analyze_batch_basic(self) -> None:
         from imgeda.lambda_handler.handlers.analyze_batch import handle
 
-        def fake_download(bucket: str, key: str, path: str) -> None:
-            import shutil
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=BUCKET)
+        s3.create_bucket(Bucket=OUTPUT_BUCKET)
 
-            shutil.copy2(test_image_path, path)
-
-        mock_s3.download_file.side_effect = fake_download
+        # Upload real images
+        for name in ["img1.jpg", "img2.jpg"]:
+            s3.put_object(Bucket=BUCKET, Key=name, Body=_create_test_image_bytes())
 
         event = {
-            "source_bucket": "input",
+            "source_bucket": BUCKET,
             "keys": ["img1.jpg", "img2.jpg"],
-            "output_bucket": "output",
+            "output_bucket": OUTPUT_BUCKET,
             "output_key": "partials/batch_0.jsonl",
         }
         result = handle(event, None)
@@ -220,49 +316,119 @@ class TestAnalyzeBatch:
         assert result["processed"] == 2
         assert result["errors"] == 0
         assert result["output_key"] == "partials/batch_0.jsonl"
-        mock_s3.put_object.assert_called_once()
 
-        # Verify the JSONL content
-        call_kwargs = mock_s3.put_object.call_args[1]
-        body = call_kwargs["Body"]
+        # Verify JSONL was actually written to S3
+        body = _s3_get_body(s3, OUTPUT_BUCKET, "partials/batch_0.jsonl")
         lines = [line for line in body.split(b"\n") if line.strip()]
         assert len(lines) == 2
 
-    def test_analyze_batch_with_errors(self, mock_s3: MagicMock) -> None:
+        # Verify each line is valid JSON with expected fields
+        for line in lines:
+            rec = orjson.loads(line)
+            assert "width" in rec
+            assert "height" in rec
+            assert rec["width"] == 100
+            assert rec["height"] == 100
+            assert rec["path"].startswith("s3://")
+
+    @mock_aws
+    def test_analyze_batch_corrupt_image(self) -> None:
+        """Corrupt image data is still 'processed' (analyze_image never raises)."""
         from imgeda.lambda_handler.handlers.analyze_batch import handle
 
-        mock_s3.download_file.side_effect = Exception("download failed")
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=BUCKET)
+        s3.create_bucket(Bucket=OUTPUT_BUCKET)
+
+        # Upload a non-image file — downloads OK but analyze_image flags is_corrupt
+        s3.put_object(Bucket=BUCKET, Key="bad.jpg", Body=b"this is not an image")
 
         event = {
-            "source_bucket": "input",
+            "source_bucket": BUCKET,
             "keys": ["bad.jpg"],
-            "output_bucket": "output",
+            "output_bucket": OUTPUT_BUCKET,
             "output_key": "partials/batch_err.jsonl",
+        }
+        result = handle(event, None)
+
+        # analyze_image never raises, so the record is "processed" with is_corrupt=True
+        assert result["processed"] == 1
+        assert result["errors"] == 0
+
+        body = _s3_get_body(s3, OUTPUT_BUCKET, "partials/batch_err.jsonl")
+        rec = orjson.loads(body.split(b"\n")[0])
+        assert rec["is_corrupt"] is True
+
+    @mock_aws
+    def test_analyze_batch_with_config(self) -> None:
+        from imgeda.lambda_handler.handlers.analyze_batch import handle
+
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=BUCKET)
+        s3.create_bucket(Bucket=OUTPUT_BUCKET)
+
+        s3.put_object(Bucket=BUCKET, Key="img1.jpg", Body=_create_test_image_bytes())
+
+        event = {
+            "source_bucket": BUCKET,
+            "keys": ["img1.jpg"],
+            "output_bucket": OUTPUT_BUCKET,
+            "output_key": "partials/batch_cfg.jsonl",
+            "config": {"skip_pixel_stats": True, "include_hashes": False},
+        }
+        result = handle(event, None)
+        assert result["processed"] == 1
+
+        # Verify config was applied: no pixel_stats or hashes
+        body = _s3_get_body(s3, OUTPUT_BUCKET, "partials/batch_cfg.jsonl")
+        rec = orjson.loads(body.split(b"\n")[0])
+        assert rec["pixel_stats"] is None
+        assert rec["phash"] is None
+        assert rec["dhash"] is None
+
+    @mock_aws
+    def test_analyze_batch_missing_key_in_s3(self) -> None:
+        """Keys that don't exist in S3 should be counted as errors."""
+        from imgeda.lambda_handler.handlers.analyze_batch import handle
+
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=BUCKET)
+        s3.create_bucket(Bucket=OUTPUT_BUCKET)
+
+        event = {
+            "source_bucket": BUCKET,
+            "keys": ["nonexistent.jpg"],
+            "output_bucket": OUTPUT_BUCKET,
+            "output_key": "partials/batch_miss.jsonl",
         }
         result = handle(event, None)
 
         assert result["processed"] == 0
         assert result["errors"] == 1
 
-    def test_analyze_batch_with_config(self, mock_s3: MagicMock, test_image_path: str) -> None:
+    @mock_aws
+    def test_analyze_batch_png_image(self) -> None:
+        """Verify PNG images are handled correctly."""
         from imgeda.lambda_handler.handlers.analyze_batch import handle
 
-        def fake_download(bucket: str, key: str, path: str) -> None:
-            import shutil
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=BUCKET)
+        s3.create_bucket(Bucket=OUTPUT_BUCKET)
 
-            shutil.copy2(test_image_path, path)
-
-        mock_s3.download_file.side_effect = fake_download
+        s3.put_object(Bucket=BUCKET, Key="photo.png", Body=_create_test_image_bytes(fmt="PNG"))
 
         event = {
-            "source_bucket": "input",
-            "keys": ["img1.jpg"],
-            "output_bucket": "output",
-            "output_key": "partials/batch_cfg.jsonl",
-            "config": {"skip_pixel_stats": True, "include_hashes": False},
+            "source_bucket": BUCKET,
+            "keys": ["photo.png"],
+            "output_bucket": OUTPUT_BUCKET,
+            "output_key": "partials/batch_png.jsonl",
         }
         result = handle(event, None)
         assert result["processed"] == 1
+
+        body = _s3_get_body(s3, OUTPUT_BUCKET, "partials/batch_png.jsonl")
+        rec = orjson.loads(body.split(b"\n")[0])
+        assert rec["format"] == "PNG"
 
 
 # ---------------------------------------------------------------------------
@@ -271,17 +437,22 @@ class TestAnalyzeBatch:
 
 
 class TestMergeManifests:
-    def test_merge_basic(self, mock_s3: MagicMock, sample_records: list[dict[str, Any]]) -> None:
+    @mock_aws
+    def test_merge_basic(self) -> None:
         from imgeda.lambda_handler.handlers.merge_manifests import handle
 
-        # Split records into two partial files
-        part1 = b"\n".join(orjson.dumps(r) for r in sample_records[:3]) + b"\n"
-        part2 = b"\n".join(orjson.dumps(r) for r in sample_records[3:]) + b"\n"
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=OUTPUT_BUCKET)
 
-        mock_s3.get_object.side_effect = [_s3_body(part1), _s3_body(part2)]
+        records = _make_sample_records(5)
+        part1 = b"\n".join(orjson.dumps(r) for r in records[:3]) + b"\n"
+        part2 = b"\n".join(orjson.dumps(r) for r in records[3:]) + b"\n"
+
+        s3.put_object(Bucket=OUTPUT_BUCKET, Key="partials/batch_0.jsonl", Body=part1)
+        s3.put_object(Bucket=OUTPUT_BUCKET, Key="partials/batch_1.jsonl", Body=part2)
 
         event = {
-            "bucket": "output",
+            "bucket": OUTPUT_BUCKET,
             "partial_keys": ["partials/batch_0.jsonl", "partials/batch_1.jsonl"],
             "output_key": "manifest.jsonl",
             "input_dir": "s3://input/images/",
@@ -291,28 +462,118 @@ class TestMergeManifests:
         assert result["total_records"] == 5
         assert result["output_key"] == "manifest.jsonl"
 
-        # Verify uploaded manifest has meta header
-        call_kwargs = mock_s3.put_object.call_args[1]
-        body = call_kwargs["Body"]
-        first_line = body.split(b"\n")[0]
-        meta = orjson.loads(first_line)
+        # Verify the merged manifest was written with a proper meta header
+        body = _s3_get_body(s3, OUTPUT_BUCKET, "manifest.jsonl")
+        lines = [line for line in body.split(b"\n") if line.strip()]
+        assert len(lines) == 6  # 1 meta + 5 records
+
+        meta = orjson.loads(lines[0])
         assert meta[MANIFEST_META_KEY] is True
         assert meta["total_files"] == 5
+        assert meta["input_dir"] == "s3://input/images/"
 
-    def test_merge_empty_partials(self, mock_s3: MagicMock) -> None:
+    @mock_aws
+    def test_merge_empty_partials(self) -> None:
         from imgeda.lambda_handler.handlers.merge_manifests import handle
 
-        mock_s3.get_object.return_value = _s3_body(b"")
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=OUTPUT_BUCKET)
+
+        s3.put_object(Bucket=OUTPUT_BUCKET, Key="empty.jsonl", Body=b"")
 
         result = handle(
             {
-                "bucket": "output",
+                "bucket": OUTPUT_BUCKET,
                 "partial_keys": ["empty.jsonl"],
                 "output_key": "manifest.jsonl",
             },
             None,
         )
         assert result["total_records"] == 0
+
+    @mock_aws
+    def test_merge_skips_malformed_lines(self) -> None:
+        """Malformed JSON lines should be skipped without crashing."""
+        from imgeda.lambda_handler.handlers.merge_manifests import handle
+
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=OUTPUT_BUCKET)
+
+        records = _make_sample_records(2)
+        good_line = orjson.dumps(records[0])
+        bad_line = b"this is not valid json {{{{"
+        good_line2 = orjson.dumps(records[1])
+        body = good_line + b"\n" + bad_line + b"\n" + good_line2 + b"\n"
+
+        s3.put_object(Bucket=OUTPUT_BUCKET, Key="mixed.jsonl", Body=body)
+
+        result = handle(
+            {
+                "bucket": OUTPUT_BUCKET,
+                "partial_keys": ["mixed.jsonl"],
+                "output_key": "manifest.jsonl",
+            },
+            None,
+        )
+        assert result["total_records"] == 2
+        assert result["skipped_lines"] == 1
+
+    @mock_aws
+    def test_merge_strips_accidental_meta_from_partials(self) -> None:
+        """Meta lines in partial files should be skipped during merge."""
+        from imgeda.lambda_handler.handlers.merge_manifests import handle
+
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=OUTPUT_BUCKET)
+
+        # Build a partial that accidentally has a meta line
+        records = _make_sample_records(2)
+        meta = ManifestMeta(input_dir="s3://old/", total_files=99)
+        body = orjson.dumps(meta.to_dict()) + b"\n"
+        body += b"\n".join(orjson.dumps(r) for r in records) + b"\n"
+
+        s3.put_object(Bucket=OUTPUT_BUCKET, Key="partial_with_meta.jsonl", Body=body)
+
+        result = handle(
+            {
+                "bucket": OUTPUT_BUCKET,
+                "partial_keys": ["partial_with_meta.jsonl"],
+                "output_key": "manifest.jsonl",
+            },
+            None,
+        )
+        # Only the 2 real records, not the stale meta
+        assert result["total_records"] == 2
+
+    @mock_aws
+    def test_merge_accepts_analyze_results(self) -> None:
+        """Step Functions Map output is an array of results; merge should extract output_keys."""
+        from imgeda.lambda_handler.handlers.merge_manifests import handle
+
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=OUTPUT_BUCKET)
+
+        records = _make_sample_records(4)
+        part1 = b"\n".join(orjson.dumps(r) for r in records[:2]) + b"\n"
+        part2 = b"\n".join(orjson.dumps(r) for r in records[2:]) + b"\n"
+
+        s3.put_object(Bucket=OUTPUT_BUCKET, Key="partials/batch-0.jsonl", Body=part1)
+        s3.put_object(Bucket=OUTPUT_BUCKET, Key="partials/batch-1.jsonl", Body=part2)
+
+        # Simulate Step Functions Map output (no partial_keys, just analyze_results)
+        event = {
+            "bucket": OUTPUT_BUCKET,
+            "analyze_results": [
+                {"processed": 2, "errors": 0, "output_key": "partials/batch-0.jsonl"},
+                {"processed": 2, "errors": 0, "output_key": "partials/batch-1.jsonl"},
+            ],
+            "output_key": "manifest.jsonl",
+            "input_dir": "s3://input/images/",
+        }
+        result = handle(event, None)
+
+        assert result["total_records"] == 4
+        assert result["output_key"] == "manifest.jsonl"
 
 
 # ---------------------------------------------------------------------------
@@ -321,13 +582,18 @@ class TestMergeManifests:
 
 
 class TestAggregate:
-    def test_aggregate_basic(self, mock_s3: MagicMock, manifest_body: bytes) -> None:
+    @mock_aws
+    def test_aggregate_basic(self) -> None:
         from imgeda.lambda_handler.handlers.aggregate import handle
 
-        mock_s3.get_object.return_value = _s3_body(manifest_body)
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=OUTPUT_BUCKET)
+
+        records = _make_sample_records(5)
+        _upload_manifest(s3, OUTPUT_BUCKET, "manifest.jsonl", records)
 
         event = {
-            "bucket": "output",
+            "bucket": OUTPUT_BUCKET,
             "manifest_key": "manifest.jsonl",
             "output_key": "summary.json",
         }
@@ -336,27 +602,60 @@ class TestAggregate:
         assert result["output_key"] == "summary.json"
         summary = result["summary"]
         assert summary["total_images"] == 5
-        assert summary["total_size_bytes"] == 15000
+        assert summary["total_size_bytes"] == 15000  # 1000+2000+3000+4000+5000
 
-        # Verify JSON was uploaded
-        mock_s3.put_object.assert_called_once()
+        # Verify JSON was actually uploaded to S3
+        body = _s3_get_body(s3, OUTPUT_BUCKET, "summary.json")
+        uploaded_summary = orjson.loads(body)
+        assert uploaded_summary["total_images"] == 5
 
-    def test_aggregate_empty_manifest(self, mock_s3: MagicMock) -> None:
+    @mock_aws
+    def test_aggregate_empty_manifest(self) -> None:
         from imgeda.lambda_handler.handlers.aggregate import handle
+
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=OUTPUT_BUCKET)
 
         meta = ManifestMeta(input_dir="", total_files=0)
         body = orjson.dumps(meta.to_dict()) + b"\n"
-        mock_s3.get_object.return_value = _s3_body(body)
+        s3.put_object(Bucket=OUTPUT_BUCKET, Key="empty.jsonl", Body=body)
 
         result = handle(
             {
-                "bucket": "output",
+                "bucket": OUTPUT_BUCKET,
                 "manifest_key": "empty.jsonl",
                 "output_key": "summary.json",
             },
             None,
         )
         assert result["summary"]["total_images"] == 0
+
+    @mock_aws
+    def test_aggregate_verifies_uploaded_json_format(self) -> None:
+        """Verify the uploaded summary is valid indented JSON with correct content type."""
+        from imgeda.lambda_handler.handlers.aggregate import handle
+
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=OUTPUT_BUCKET)
+
+        records = _make_sample_records(3)
+        _upload_manifest(s3, OUTPUT_BUCKET, "manifest.jsonl", records)
+
+        handle(
+            {
+                "bucket": OUTPUT_BUCKET,
+                "manifest_key": "manifest.jsonl",
+                "output_key": "summary.json",
+            },
+            None,
+        )
+
+        body = _s3_get_body(s3, OUTPUT_BUCKET, "summary.json")
+        # Should be valid JSON
+        parsed = orjson.loads(body)
+        assert parsed["total_images"] == 3
+        # Should be indented (contains newlines)
+        assert b"\n" in body
 
 
 # ---------------------------------------------------------------------------
@@ -365,40 +664,75 @@ class TestAggregate:
 
 
 class TestGeneratePlots:
-    def test_generate_plots_basic(self, mock_s3: MagicMock, manifest_body: bytes) -> None:
+    @mock_aws
+    def test_generate_plots_basic(self) -> None:
         from imgeda.lambda_handler.handlers.generate_plots import handle
 
-        mock_s3.get_object.return_value = _s3_body(manifest_body)
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=OUTPUT_BUCKET)
+
+        records = _make_sample_records(5)
+        _upload_manifest(s3, OUTPUT_BUCKET, "manifest.jsonl", records)
 
         event = {
-            "bucket": "output",
+            "bucket": OUTPUT_BUCKET,
             "manifest_key": "manifest.jsonl",
             "output_prefix": "plots/",
         }
         result = handle(event, None)
 
         assert isinstance(result["plots"], list)
-        # At least some plots should be generated
         assert len(result["plots"]) > 0
-        # Verify upload_file was called
-        assert mock_s3.upload_file.call_count == len(result["plots"])
 
-    def test_generate_plots_empty_records(self, mock_s3: MagicMock) -> None:
+        # Verify each plot was actually uploaded to S3
+        for key in result["plots"]:
+            assert key.startswith("plots/")
+            body = _s3_get_body(s3, OUTPUT_BUCKET, key)
+            # PNG files start with the PNG magic bytes
+            assert body[:4] == b"\x89PNG", f"Expected PNG file at {key}"
+
+    @mock_aws
+    def test_generate_plots_empty_records(self) -> None:
         from imgeda.lambda_handler.handlers.generate_plots import handle
+
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=OUTPUT_BUCKET)
 
         meta = ManifestMeta(input_dir="", total_files=0)
         body = orjson.dumps(meta.to_dict()) + b"\n"
-        mock_s3.get_object.return_value = _s3_body(body)
+        s3.put_object(Bucket=OUTPUT_BUCKET, Key="empty.jsonl", Body=body)
 
         result = handle(
             {
-                "bucket": "output",
+                "bucket": OUTPUT_BUCKET,
                 "manifest_key": "empty.jsonl",
                 "output_prefix": "plots/",
             },
             None,
         )
         assert result["plots"] == []
+
+    @mock_aws
+    def test_generate_plots_custom_prefix(self) -> None:
+        from imgeda.lambda_handler.handlers.generate_plots import handle
+
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=OUTPUT_BUCKET)
+
+        records = _make_sample_records(3)
+        _upload_manifest(s3, OUTPUT_BUCKET, "manifest.jsonl", records)
+
+        result = handle(
+            {
+                "bucket": OUTPUT_BUCKET,
+                "manifest_key": "manifest.jsonl",
+                "output_prefix": "results/charts/",
+            },
+            None,
+        )
+
+        for key in result["plots"]:
+            assert key.startswith("results/charts/")
 
 
 # ---------------------------------------------------------------------------
@@ -407,16 +741,172 @@ class TestGeneratePlots:
 
 
 class TestErrorHandling:
-    def test_missing_required_fields_list_images(self, mock_s3: MagicMock) -> None:
+    @mock_aws
+    def test_missing_required_fields_list_images(self) -> None:
         """list_images should raise KeyError when bucket is missing."""
         from imgeda.lambda_handler.handlers.list_images import handle
 
         with pytest.raises(KeyError):
             handle({}, None)
 
-    def test_missing_required_fields_analyze_batch(self, mock_s3: MagicMock) -> None:
+    @mock_aws
+    def test_missing_required_fields_analyze_batch(self) -> None:
         """analyze_batch should raise KeyError when required fields are missing."""
         from imgeda.lambda_handler.handlers.analyze_batch import handle
 
         with pytest.raises(KeyError):
             handle({"action": "analyze_batch"}, None)
+
+    @mock_aws
+    def test_analyze_batch_nonexistent_source_bucket(self) -> None:
+        """Download from a non-existent bucket counts as an error (caught internally)."""
+        from imgeda.lambda_handler.handlers.analyze_batch import handle
+
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=OUTPUT_BUCKET)
+
+        # Source bucket doesn't exist: download_file raises ClientError,
+        # caught by analyze_batch's per-key try/except -> counted as error
+        result = handle(
+            {
+                "source_bucket": "no-such-bucket",
+                "keys": ["img.jpg"],
+                "output_bucket": OUTPUT_BUCKET,
+                "output_key": "partials/batch.jsonl",
+            },
+            None,
+        )
+        assert result["processed"] == 0
+        assert result["errors"] == 1
+
+    @mock_aws
+    def test_aggregate_nonexistent_manifest(self) -> None:
+        """Aggregating from a non-existent manifest key should raise ClientError."""
+        from botocore.exceptions import ClientError
+
+        from imgeda.lambda_handler.handlers.aggregate import handle
+
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=OUTPUT_BUCKET)
+
+        with pytest.raises(ClientError):
+            handle(
+                {
+                    "bucket": OUTPUT_BUCKET,
+                    "manifest_key": "nonexistent.jsonl",
+                    "output_key": "summary.json",
+                },
+                None,
+            )
+
+    @mock_aws
+    def test_merge_nonexistent_partial(self) -> None:
+        """Merging a non-existent partial key should skip it gracefully."""
+        from imgeda.lambda_handler.handlers.merge_manifests import handle
+
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=OUTPUT_BUCKET)
+
+        # One real partial + one missing
+        records = _make_sample_records(2)
+        part = b"\n".join(orjson.dumps(r) for r in records) + b"\n"
+        s3.put_object(Bucket=OUTPUT_BUCKET, Key="partials/good.jsonl", Body=part)
+
+        result = handle(
+            {
+                "bucket": OUTPUT_BUCKET,
+                "partial_keys": ["partials/good.jsonl", "partials/missing.jsonl"],
+                "output_key": "manifest.jsonl",
+            },
+            None,
+        )
+        # Should process the good partial and skip the missing one
+        assert result["total_records"] == 2
+        assert result["skipped_keys"] == 1
+
+    @mock_aws
+    def test_analyze_batch_mix_of_good_and_corrupt(self) -> None:
+        """Batch with valid + corrupt images: both are processed (core never raises)."""
+        from imgeda.lambda_handler.handlers.analyze_batch import handle
+
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=BUCKET)
+        s3.create_bucket(Bucket=OUTPUT_BUCKET)
+
+        good_bytes = _create_test_image_bytes()
+        s3.put_object(Bucket=BUCKET, Key="good.jpg", Body=good_bytes)
+        s3.put_object(Bucket=BUCKET, Key="corrupt.jpg", Body=b"not an image")
+
+        result = handle(
+            {
+                "source_bucket": BUCKET,
+                "keys": ["good.jpg", "corrupt.jpg"],
+                "output_bucket": OUTPUT_BUCKET,
+                "output_key": "partials/mixed.jsonl",
+            },
+            None,
+        )
+        # analyze_image never raises — corrupt files get is_corrupt=True in the record
+        assert result["processed"] == 2
+        assert result["errors"] == 0
+
+        # Verify both records written, one flagged corrupt
+        body = _s3_get_body(s3, OUTPUT_BUCKET, "partials/mixed.jsonl")
+        lines = [line for line in body.split(b"\n") if line.strip()]
+        assert len(lines) == 2
+        records = [orjson.loads(line) for line in lines]
+        corrupt_flags = [r.get("is_corrupt", False) for r in records]
+        assert True in corrupt_flags  # at least one is corrupt
+
+    @mock_aws
+    def test_analyze_batch_missing_s3_key(self) -> None:
+        """Keys that don't exist in S3 count as errors (download_file raises)."""
+        from imgeda.lambda_handler.handlers.analyze_batch import handle
+
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=BUCKET)
+        s3.create_bucket(Bucket=OUTPUT_BUCKET)
+
+        # good.jpg exists, ghost.jpg does not
+        good_bytes = _create_test_image_bytes()
+        s3.put_object(Bucket=BUCKET, Key="good.jpg", Body=good_bytes)
+
+        result = handle(
+            {
+                "source_bucket": BUCKET,
+                "keys": ["good.jpg", "ghost.jpg"],
+                "output_bucket": OUTPUT_BUCKET,
+                "output_key": "partials/partial.jsonl",
+            },
+            None,
+        )
+        assert result["processed"] == 1
+        assert result["errors"] == 1
+
+    @mock_aws
+    def test_merge_with_failed_batch_in_analyze_results(self) -> None:
+        """Map output may include batches with errors=N but no output_key should be skipped."""
+        from imgeda.lambda_handler.handlers.merge_manifests import handle
+
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=OUTPUT_BUCKET)
+
+        records = _make_sample_records(3)
+        part = b"\n".join(orjson.dumps(r) for r in records) + b"\n"
+        s3.put_object(Bucket=OUTPUT_BUCKET, Key="partials/batch-0.jsonl", Body=part)
+
+        result = handle(
+            {
+                "bucket": OUTPUT_BUCKET,
+                "analyze_results": [
+                    {"processed": 3, "errors": 0, "output_key": "partials/batch-0.jsonl"},
+                    # batch-1 wrote a partial but had some errors
+                    {"processed": 0, "errors": 5, "output_key": "partials/batch-1.jsonl"},
+                ],
+                "output_key": "manifest.jsonl",
+            },
+            None,
+        )
+        # Should get the 3 records from batch-0; batch-1's partial doesn't exist
+        assert result["total_records"] == 3
+        assert result["skipped_keys"] == 1

@@ -27,7 +27,7 @@ def handle(event: dict[str, Any], context: Any) -> dict[str, Any]:
         errors: Number of images that could not be analyzed
         output_key: S3 key where results were written
     """
-    import boto3  # type: ignore[import-not-found]
+    import boto3  # type: ignore[import-untyped]
 
     source_bucket = event["source_bucket"]
     keys: list[str] = event["keys"]
@@ -49,11 +49,13 @@ def handle(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     for key in keys:
         tmp_path = ""
+        fd = -1
         try:
             # Download to /tmp
             suffix = os.path.splitext(key)[1] or ".jpg"
             fd, tmp_path = tempfile.mkstemp(suffix=suffix, dir="/tmp")
             os.close(fd)
+            fd = -1  # Mark as closed
 
             s3.download_file(source_bucket, key, tmp_path)
 
@@ -68,6 +70,8 @@ def handle(event: dict[str, Any], context: Any) -> dict[str, Any]:
         except Exception:
             errors += 1
         finally:
+            if fd >= 0:
+                os.close(fd)
             if tmp_path and os.path.exists(tmp_path):
                 os.unlink(tmp_path)
 

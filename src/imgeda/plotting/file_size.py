@@ -17,36 +17,46 @@ def plot_file_size(records: list[ImageRecord], config: PlotConfig) -> str:
 
     if sizes_kb:
         arr = np.array(sizes_kb)
-        # Use log-space bins for proper log-scale histogram
         lo = max(arr.min(), 0.1)
         hi = arr.max()
-        bins = np.logspace(np.log10(lo), np.log10(hi), 80)
-        ax.hist(sizes_kb, bins=bins, color=COLORS["primary"], edgecolor="white", linewidth=0.3)
+        bins = np.logspace(np.log10(lo), np.log10(hi), 60)
+        ax.hist(
+            sizes_kb,
+            bins=bins,
+            color=COLORS["primary"],
+            edgecolor="white",
+            linewidth=0.5,
+            alpha=0.85,
+        )
         ax.set_xscale("log")
 
-        # Annotate percentiles
+        # Percentile annotations — staggered vertically, placed to the right
         median = float(np.median(arr))
         p95 = float(np.percentile(arr, 95))
         p99 = float(np.percentile(arr, 99))
         y_max = ax.get_ylim()[1]
-        for val, label, color in [
-            (median, f"Median: {median:.0f} KB", COLORS["success"]),
-            (p95, f"P95: {p95:.0f} KB", COLORS["secondary"]),
-            (p99, f"P99: {p99:.0f} KB", COLORS["danger"]),
-        ]:
-            ax.axvline(val, color=color, linestyle="--", alpha=0.8)
+
+        stats = [
+            (median, f"Median  {median:,.0f} KB", COLORS["success"], 0.92),
+            (p95, f"P95  {p95:,.0f} KB", COLORS["secondary"], 0.76),
+            (p99, f"P99  {p99:,.0f} KB", COLORS["danger"], 0.60),
+        ]
+        for val, label, color, y_frac in stats:
+            ax.axvline(val, color=color, linestyle="--", alpha=0.7, linewidth=1.2)
             ax.annotate(
                 label,
-                xy=(val, y_max * 0.9),
-                xytext=(val * 1.5, y_max * 0.8),
-                arrowprops=dict(arrowstyle="->", color=color),
-                fontsize=9,
+                xy=(val, y_max * y_frac),
+                xytext=(val * 2.2, y_max * y_frac),
+                fontsize=12,
+                fontweight="bold",
                 color=color,
+                va="center",
+                arrowprops=dict(arrowstyle="-|>", color=color, lw=1.2),
             )
 
     ax.set_xlabel("File Size (KB, log scale)")
     ax.set_ylabel("Count")
-    ax.set_title(f"File Size Distribution ({len(recs):,} images)")
+    ax.set_title(f"File Size Distribution  ({len(recs):,} images)")
     fig.tight_layout()
 
     return save_figure(fig, "file_size", config)

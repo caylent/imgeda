@@ -43,6 +43,20 @@ class ImageRecord:
     num_channels: int = 0
     aspect_ratio: float = 0.0
 
+    # EXIF metadata (optional)
+    camera_make: str | None = None
+    camera_model: str | None = None
+    lens_model: str | None = None
+    focal_length_mm: float | None = None
+    focal_length_35mm: int | None = None
+    iso_speed: int | None = None
+    f_number: float | None = None
+    exposure_time_sec: float | None = None
+    datetime_original: str | None = None
+    orientation_tag: int | None = None
+    has_gps_data: bool = False
+    distortion_risk: str | None = None
+
     # Pixel stats (optional)
     pixel_stats: PixelStats | None = None
 

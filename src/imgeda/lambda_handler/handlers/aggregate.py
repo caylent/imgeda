@@ -23,7 +23,7 @@ def handle(event: dict[str, Any], context: Any) -> dict[str, Any]:
         output_key: S3 key where the summary was written
         summary: The DatasetSummary as a dict
     """
-    import boto3  # type: ignore[import-not-found]
+    import boto3  # type: ignore[import-untyped]
 
     bucket = event["bucket"]
     manifest_key: str = event["manifest_key"]

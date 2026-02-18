@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 
 def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """AWS Lambda entry point — dispatches to action-specific handlers.
 
-    Events must include an "action" field:
-        list_images, analyze_batch, merge_manifests, aggregate, generate_plots
+    Routing: checks event["action"] first, then falls back to the ACTION
+    environment variable (set by CDK on each Lambda function).
     """
-    action = event.get("action")
+    action = event.get("action") or os.environ.get("ACTION", "").lower()
 
     if action == "list_images":
         from imgeda.lambda_handler.handlers.list_images import handle

@@ -254,6 +254,15 @@ class TestDiffCLI:
         result = runner.invoke(app, ["diff", "--help"])
         assert result.exit_code == 0
 
+    def test_diff_missing_old(self, tmp_path: Path) -> None:
+        new = tmp_path / "new.jsonl"
+        new.write_text("{}\n")
+        result = runner.invoke(
+            app, ["diff", "--old", str(tmp_path / "nope.jsonl"), "--new", str(new)]
+        )
+        assert result.exit_code == 1
+        assert "not found" in result.output
+
 
 class TestGateCLI:
     @pytest.fixture()
@@ -301,6 +310,20 @@ class TestGateCLI:
         result = runner.invoke(app, ["gate", "--help"])
         assert result.exit_code == 0
 
+    def test_gate_missing_manifest(self, tmp_path: Path) -> None:
+        policy = tmp_path / "p.yml"
+        policy.write_text("min_images_total: 1\n")
+        result = runner.invoke(app, ["gate", "-m", str(tmp_path / "nope.jsonl"), "-p", str(policy)])
+        assert result.exit_code == 1
+        assert "not found" in result.output
+
+    def test_gate_missing_policy(self, tmp_path: Path) -> None:
+        manifest = tmp_path / "m.jsonl"
+        manifest.write_text("{}\n")
+        result = runner.invoke(app, ["gate", "-m", str(manifest), "-p", str(tmp_path / "nope.yml")])
+        assert result.exit_code == 1
+        assert "not found" in result.output
+
 
 class TestExportCLI:
     @pytest.fixture()
@@ -330,6 +353,21 @@ class TestExportCLI:
     def test_export_help(self) -> None:
         result = runner.invoke(app, ["export", "--help"])
         assert result.exit_code == 0
+
+    def test_export_missing_manifest(self, tmp_path: Path) -> None:
+        result = runner.invoke(
+            app,
+            [
+                "export",
+                "parquet",
+                "-m",
+                str(tmp_path / "nope.jsonl"),
+                "-o",
+                str(tmp_path / "out.parquet"),
+            ],
+        )
+        assert result.exit_code == 1
+        assert "not found" in result.output
 
 
 class TestCheckCommands:

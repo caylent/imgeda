@@ -67,3 +67,50 @@ def large_image(tmp_path: Path) -> str:
     path = tmp_path / "large.jpg"
     Image.fromarray(arr).save(path)
     return str(path)
+
+
+@pytest.fixture
+def exif_image(tmp_path: Path) -> str:
+    """Create a JPEG with EXIF metadata (camera, lens, focal length, GPS flag)."""
+    arr = np.random.randint(60, 200, (100, 100, 3), dtype=np.uint8)
+    img = Image.fromarray(arr)
+    exif = img.getexif()
+
+    # IFD0 tags
+    exif[0x010F] = "Canon"  # Make
+    exif[0x0110] = "Canon EOS 5D Mark IV"  # Model
+    exif[0x0112] = 6  # Orientation (90° CW)
+
+    # ExifIFD tags — write into the sub-IFD
+    exif_ifd = exif.get_ifd(0x8769)
+    exif_ifd[0x829A] = 0.001  # ExposureTime (1/1000s)
+    exif_ifd[0x829D] = 2.8  # FNumber
+    exif_ifd[0x8827] = 400  # ISOSpeedRatings
+    exif_ifd[0x9003] = "2025:06:15 10:30:00"  # DateTimeOriginal
+    exif_ifd[0x920A] = 14.0  # FocalLength (14mm)
+    exif_ifd[0xA405] = 14  # FocalLengthIn35mmFilm
+    exif_ifd[0xA434] = "Canon EF 14mm f/2.8L II USM"  # LensModel
+
+    path = tmp_path / "exif_test.jpg"
+    img.save(path, exif=exif.tobytes())
+    return str(path)
+
+
+@pytest.fixture
+def exif_image_no_distortion(tmp_path: Path) -> str:
+    """Create a JPEG with EXIF metadata for a normal focal length (no distortion risk)."""
+    arr = np.random.randint(60, 200, (100, 100, 3), dtype=np.uint8)
+    img = Image.fromarray(arr)
+    exif = img.getexif()
+
+    exif[0x010F] = "Nikon"  # Make
+    exif[0x0110] = "Nikon D850"  # Model
+
+    exif_ifd = exif.get_ifd(0x8769)
+    exif_ifd[0x920A] = 50.0  # FocalLength (50mm)
+    exif_ifd[0xA405] = 50  # FocalLengthIn35mmFilm
+    exif_ifd[0xA434] = "Nikon AF-S NIKKOR 50mm f/1.4G"  # LensModel
+
+    path = tmp_path / "exif_normal.jpg"
+    img.save(path, exif=exif.tobytes())
+    return str(path)

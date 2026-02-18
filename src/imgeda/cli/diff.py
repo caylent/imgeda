@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Optional
 
 import orjson
@@ -20,6 +21,13 @@ def diff(
     output: Optional[str] = typer.Option(None, "-o", "--out", help="Output JSON path"),
 ) -> None:
     """Compare two manifests and show differences."""
+    if not Path(old).exists():
+        console.print(f"[red]Old manifest not found: {old}[/red]")
+        raise typer.Exit(1)
+    if not Path(new).exists():
+        console.print(f"[red]New manifest not found: {new}[/red]")
+        raise typer.Exit(1)
+
     _, old_records = read_manifest(old)
     _, new_records = read_manifest(new)
 

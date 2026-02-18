@@ -22,9 +22,8 @@ def plot_dimensions(records: list[ImageRecord], config: PlotConfig) -> str:
     fig, ax = create_figure(config)
 
     if len(recs) > 5000:
-        # Hexbin for large datasets
-        hb = ax.hexbin(widths, heights, gridsize=50, cmap="YlOrRd", mincnt=1)
-        fig.colorbar(hb, ax=ax, label="Count")
+        hb = ax.hexbin(widths, heights, gridsize=50, cmap="Blues", mincnt=1, alpha=0.85)
+        fig.colorbar(hb, ax=ax, label="Count", shrink=0.8)
     else:
         from imgeda.plotting.base import sample_records
 
@@ -34,29 +33,30 @@ def plot_dimensions(records: list[ImageRecord], config: PlotConfig) -> str:
         ax.scatter(
             w,
             h,
-            alpha=0.4,
-            s=12,
+            alpha=0.45,
+            s=18,
             c=COLORS["primary"],
             edgecolors="white",
-            linewidths=0.3,
+            linewidths=0.4,
+            zorder=3,
         )
 
-    # Reference lines
+    # Reference lines — subtle and clean
     for label, (rw, rh) in RESOLUTION_REFS.items():
-        ax.axvline(rw, color=COLORS["neutral"], linestyle="--", alpha=0.5, linewidth=0.8)
-        ax.axhline(rh, color=COLORS["neutral"], linestyle="--", alpha=0.5, linewidth=0.8)
+        ax.axvline(rw, color=COLORS["light"], linestyle="--", alpha=0.6, linewidth=0.8)
+        ax.axhline(rh, color=COLORS["light"], linestyle="--", alpha=0.6, linewidth=0.8)
         ax.annotate(
             label,
             (rw, rh),
-            fontsize=8,
+            fontsize=10,
+            fontweight="bold",
             color=COLORS["neutral"],
-            alpha=0.9,
-            bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.7),
+            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=COLORS["light"], alpha=0.9),
         )
 
     ax.set_xlabel("Width (px)")
     ax.set_ylabel("Height (px)")
-    ax.set_title(f"Image Dimensions ({len(recs):,} images)")
+    ax.set_title(f"Image Dimensions  ({len(recs):,} images)")
     fig.tight_layout()
 
     return save_figure(fig, "dimensions", config)

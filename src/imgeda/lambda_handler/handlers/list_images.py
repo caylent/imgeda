@@ -22,7 +22,7 @@ def handle(event: dict[str, Any], context: Any) -> dict[str, Any]:
         batches: List of key lists, each up to batch_size
         total_images: Total number of images found
     """
-    import boto3  # type: ignore[import-not-found]
+    import boto3  # type: ignore[import-untyped]
 
     bucket = event["bucket"]
     prefix = event.get("prefix", "")

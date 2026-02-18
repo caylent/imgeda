@@ -13,6 +13,7 @@ class ScanConfig:
     include_hashes: bool = True
     hash_size: int = 16
     skip_pixel_stats: bool = False
+    skip_exif: bool = False
     extensions: tuple[str, ...] = (
         ".jpg",
         ".jpeg",
@@ -41,3 +42,4 @@ class PlotConfig:
     sample: int | None = None
     figsize: tuple[float, float] = (12.0, 8.0)
     artifact_threshold: float = 50.0
+    seed: int = 42

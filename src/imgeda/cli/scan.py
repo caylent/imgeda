@@ -24,6 +24,7 @@ def scan(
     skip_pixel_stats: bool = typer.Option(
         False, "--skip-pixel-stats", help="Metadata-only scan (faster)"
     ),
+    skip_exif: bool = typer.Option(False, "--skip-exif", help="Skip EXIF metadata extraction"),
     no_hashes: bool = typer.Option(False, "--no-hashes", help="Skip perceptual hashing"),
     extensions: Optional[str] = typer.Option(
         None, "--extensions", help="Comma-separated extensions"
@@ -45,6 +46,7 @@ def scan(
         checkpoint_every=checkpoint_every,
         include_hashes=not no_hashes,
         skip_pixel_stats=skip_pixel_stats,
+        skip_exif=skip_exif,
         dark_threshold=dark_threshold,
         overexposed_threshold=overexposed_threshold,
         artifact_threshold=artifact_threshold,

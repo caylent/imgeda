@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import typer
 from rich.console import Console
 
@@ -20,6 +22,10 @@ def parquet(
 
     Requires pyarrow: pip install imgeda[parquet]
     """
+    if not Path(manifest).exists():
+        console.print(f"[red]Manifest not found: {manifest}[/red]")
+        raise typer.Exit(1)
+
     _, records = read_manifest(manifest)
 
     if not records:

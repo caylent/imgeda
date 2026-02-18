@@ -27,17 +27,20 @@ def plot_duplicates(records: list[ImageRecord], config: PlotConfig) -> str:
             [str(k) for k in sorted_keys],
             [size_counts[k] for k in sorted_keys],
             color=COLORS["primary"],
+            alpha=0.85,
+            edgecolor="white",
+            linewidth=0.5,
         )
-        # Value labels on top of bars
         for bar in bars:
             height = bar.get_height()
             ax1.text(
                 bar.get_x() + bar.get_width() / 2.0,
-                height,
+                height + 0.3,
                 f"{int(height)}",
                 ha="center",
                 va="bottom",
-                fontsize=9,
+                fontsize=12,
+                fontweight="bold",
                 color=COLORS["neutral"],
             )
         ax1.set_xlabel("Group Size")
@@ -51,23 +54,31 @@ def plot_duplicates(records: list[ImageRecord], config: PlotConfig) -> str:
             ha="center",
             va="center",
             transform=ax1.transAxes,
+            fontsize=14,
+            color=COLORS["neutral"],
+            fontstyle="italic",
         )
         ax1.set_title("Duplicate Group Sizes")
 
     # Donut chart: unique vs duplicate
     total = len(records)
-    dup_count = sum(len(v) - 1 for v in groups.values())  # excess copies
+    dup_count = sum(len(v) - 1 for v in groups.values())
     unique_count = total - dup_count
 
-    ax2.pie(
+    wedges, texts, autotexts = ax2.pie(
         [unique_count, dup_count],
         labels=[f"Unique ({unique_count:,})", f"Duplicates ({dup_count:,})"],
         colors=[COLORS["success"], COLORS["danger"]],
         autopct="%1.1f%%",
         startangle=90,
-        wedgeprops=dict(width=0.6),
+        wedgeprops=dict(width=0.55, edgecolor="white", linewidth=2),
+        textprops=dict(fontsize=12),
     )
+    for at in autotexts:
+        at.set_fontweight("bold")
+        at.set_fontsize(12)
+
     ax2.set_title("Unique vs Duplicate Images")
 
-    fig.tight_layout()
+    fig.tight_layout(w_pad=3)
     return save_figure(fig, "duplicates", config)

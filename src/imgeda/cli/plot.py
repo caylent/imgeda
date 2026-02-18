@@ -21,6 +21,7 @@ def _load_and_config(
     fmt: str,
     dpi: int,
     sample: Optional[int],
+    seed: int = 42,
 ) -> tuple[list[ImageRecord], PlotConfig]:
     _meta, records = read_manifest(manifest)
     if not records:
@@ -36,6 +37,7 @@ def _load_and_config(
         dpi=dpi,
         sample=sample,
         artifact_threshold=artifact_threshold,
+        seed=seed,
     )
     return records, config
 
@@ -46,6 +48,7 @@ _output_opt = typer.Option("./plots", "-o", "--output", help="Output directory")
 _format_opt = typer.Option("png", "--format", help="Output format (png, pdf, svg)")
 _dpi_opt = typer.Option(150, "--dpi", help="DPI for output")
 _sample_opt = typer.Option(None, "--sample", help="Sample N records for large datasets")
+_seed_opt = typer.Option(42, "--seed", help="Random seed for sampling reproducibility")
 
 
 @plot_app.command()
@@ -55,11 +58,12 @@ def dimensions(
     fmt: str = _format_opt,
     dpi: int = _dpi_opt,
     sample: Optional[int] = _sample_opt,
+    seed: int = _seed_opt,
 ) -> None:
     """Plot image dimensions (width x height)."""
     from imgeda.plotting.dimensions import plot_dimensions
 
-    records, config = _load_and_config(manifest, output, fmt, dpi, sample)
+    records, config = _load_and_config(manifest, output, fmt, dpi, sample, seed)
     path = plot_dimensions(records, config)
     console.print(f"[green]Saved:[/green] {path}")
 
@@ -71,11 +75,12 @@ def file_size(
     fmt: str = _format_opt,
     dpi: int = _dpi_opt,
     sample: Optional[int] = _sample_opt,
+    seed: int = _seed_opt,
 ) -> None:
     """Plot file size distribution."""
     from imgeda.plotting.file_size import plot_file_size
 
-    records, config = _load_and_config(manifest, output, fmt, dpi, sample)
+    records, config = _load_and_config(manifest, output, fmt, dpi, sample, seed)
     path = plot_file_size(records, config)
     console.print(f"[green]Saved:[/green] {path}")
 
@@ -87,11 +92,12 @@ def aspect_ratio(
     fmt: str = _format_opt,
     dpi: int = _dpi_opt,
     sample: Optional[int] = _sample_opt,
+    seed: int = _seed_opt,
 ) -> None:
     """Plot aspect ratio distribution."""
     from imgeda.plotting.aspect_ratio import plot_aspect_ratio
 
-    records, config = _load_and_config(manifest, output, fmt, dpi, sample)
+    records, config = _load_and_config(manifest, output, fmt, dpi, sample, seed)
     path = plot_aspect_ratio(records, config)
     console.print(f"[green]Saved:[/green] {path}")
 
@@ -103,11 +109,12 @@ def brightness(
     fmt: str = _format_opt,
     dpi: int = _dpi_opt,
     sample: Optional[int] = _sample_opt,
+    seed: int = _seed_opt,
 ) -> None:
     """Plot brightness distribution."""
     from imgeda.plotting.pixel_stats import plot_brightness
 
-    records, config = _load_and_config(manifest, output, fmt, dpi, sample)
+    records, config = _load_and_config(manifest, output, fmt, dpi, sample, seed)
     path = plot_brightness(records, config)
     console.print(f"[green]Saved:[/green] {path}")
 
@@ -119,11 +126,12 @@ def channels(
     fmt: str = _format_opt,
     dpi: int = _dpi_opt,
     sample: Optional[int] = _sample_opt,
+    seed: int = _seed_opt,
 ) -> None:
     """Plot R/G/B channel distributions."""
     from imgeda.plotting.pixel_stats import plot_channels
 
-    records, config = _load_and_config(manifest, output, fmt, dpi, sample)
+    records, config = _load_and_config(manifest, output, fmt, dpi, sample, seed)
     path = plot_channels(records, config)
     console.print(f"[green]Saved:[/green] {path}")
 
@@ -135,11 +143,12 @@ def artifacts(
     fmt: str = _format_opt,
     dpi: int = _dpi_opt,
     sample: Optional[int] = _sample_opt,
+    seed: int = _seed_opt,
 ) -> None:
     """Plot border artifact analysis."""
     from imgeda.plotting.artifacts import plot_artifacts
 
-    records, config = _load_and_config(manifest, output, fmt, dpi, sample)
+    records, config = _load_and_config(manifest, output, fmt, dpi, sample, seed)
     path = plot_artifacts(records, config)
     console.print(f"[green]Saved:[/green] {path}")
 
@@ -151,11 +160,12 @@ def duplicates(
     fmt: str = _format_opt,
     dpi: int = _dpi_opt,
     sample: Optional[int] = _sample_opt,
+    seed: int = _seed_opt,
 ) -> None:
     """Plot duplicate analysis."""
     from imgeda.plotting.duplicates import plot_duplicates
 
-    records, config = _load_and_config(manifest, output, fmt, dpi, sample)
+    records, config = _load_and_config(manifest, output, fmt, dpi, sample, seed)
     path = plot_duplicates(records, config)
     console.print(f"[green]Saved:[/green] {path}")
 
@@ -167,16 +177,17 @@ def all_plots(
     fmt: str = _format_opt,
     dpi: int = _dpi_opt,
     sample: Optional[int] = _sample_opt,
+    seed: int = _seed_opt,
 ) -> None:
     """Generate all plots."""
-    from imgeda.plotting.aspect_ratio import plot_aspect_ratio
     from imgeda.plotting.artifacts import plot_artifacts
+    from imgeda.plotting.aspect_ratio import plot_aspect_ratio
     from imgeda.plotting.dimensions import plot_dimensions
     from imgeda.plotting.duplicates import plot_duplicates
     from imgeda.plotting.file_size import plot_file_size
     from imgeda.plotting.pixel_stats import plot_brightness, plot_channels
 
-    records, config = _load_and_config(manifest, output, fmt, dpi, sample)
+    records, config = _load_and_config(manifest, output, fmt, dpi, sample, seed)
 
     plots = [
         ("Dimensions", plot_dimensions),
