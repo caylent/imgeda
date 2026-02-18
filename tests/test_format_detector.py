@@ -22,10 +22,7 @@ class TestYoloDetection:
     def test_yolo_with_data_yaml(self, tmp_path: Path) -> None:
         # Create data.yaml
         (tmp_path / "data.yaml").write_text(
-            "train: images/train\n"
-            "val: images/val\n"
-            "nc: 3\n"
-            "names: [cat, dog, bird]\n"
+            "train: images/train\nval: images/val\nnc: 3\nnames: [cat, dog, bird]\n"
         )
         # Create images dirs
         for split in ("train", "val"):
@@ -48,12 +45,7 @@ class TestYoloDetection:
 
     def test_yolo_with_list_names(self, tmp_path: Path) -> None:
         (tmp_path / "data.yaml").write_text(
-            "train: images/train\n"
-            "val: images/val\n"
-            "names:\n"
-            "  - cat\n"
-            "  - dog\n"
-            "  - bird\n"
+            "train: images/train\nval: images/val\nnames:\n  - cat\n  - dog\n  - bird\n"
         )
         for split in ("train", "val"):
             _create_image(tmp_path / "images" / split / "img_0.jpg")

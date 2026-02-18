@@ -114,9 +114,7 @@ def run_interactive() -> None:
         except OSError:
             total_size = 0
         est_size = total_size * len(images) / min(len(images), 1000) if images else 0
-        console.print(
-            f"  Found [bold]{len(images):,}[/bold] images (~{fmt_bytes(est_size)})\n"
-        )
+        console.print(f"  Found [bold]{len(images):,}[/bold] images (~{fmt_bytes(est_size)})\n")
 
     # 3. Split selection (if splits detected)
     selected_splits: list[str] = []
@@ -236,6 +234,6 @@ def run_interactive() -> None:
         try:
             report_cmd(manifest=output, output="./imgeda_report.html")
         except SystemExit:
-            pass  # typer.Exit from report command
+            pass  # typer.Exit raised when manifest has no records
 
     console.print("\n[bold green]Done![/bold green]")

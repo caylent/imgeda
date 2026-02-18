@@ -10,7 +10,7 @@ from pathlib import Path
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".webp", ".gif"}
 
 
-@dataclass
+@dataclass(slots=True)
 class DatasetInfo:
     """Detected dataset format and metadata."""
 
@@ -201,8 +201,8 @@ def _try_yolo(root: Path) -> DatasetInfo | None:
     labels_dir = root / "labels"
     annotations_path = str(labels_dir) if labels_dir.is_dir() else None
 
-    num_images = sum(splits.values()) if splits else sum(
-        _count_images_in(Path(d)) for d in image_dirs
+    num_images = (
+        sum(splits.values()) if splits else sum(_count_images_in(Path(d)) for d in image_dirs)
     )
 
     return DatasetInfo(
@@ -275,8 +275,10 @@ def _try_coco(root: Path) -> DatasetInfo | None:
                 except (json.JSONDecodeError, OSError):
                     pass
 
-    num_images = sum(splits.values()) if splits else (
-        _count_images_in(images_dir) if images_dir.is_dir() else 0
+    num_images = (
+        sum(splits.values())
+        if splits
+        else (_count_images_in(images_dir) if images_dir.is_dir() else 0)
     )
 
     return DatasetInfo(
@@ -348,21 +350,21 @@ def _try_classification(root: Path) -> DatasetInfo | None:
         return None
 
     # Check that most subdirs contain images
-    dirs_with_images = 0
+    counts: dict[str, int] = {}
     total_images = 0
     for sd in subdirs:
         count = _count_images_in(sd)
+        counts[sd.name] = count
         if count > 0:
-            dirs_with_images += 1
             total_images += count
+
+    dirs_with_images = sum(1 for c in counts.values() if c > 0)
 
     # Require majority of subdirs to contain images
     if dirs_with_images < len(subdirs) * 0.5:
         return None
 
-    class_names_all = sorted(
-        sd.name for sd in subdirs if _count_images_in(sd) > 0
-    )
+    class_names_all = sorted(name for name, c in counts.items() if c > 0)
 
     return DatasetInfo(
         format="classification",
