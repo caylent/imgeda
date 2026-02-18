@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from imgeda.models.config import PlotConfig
 from imgeda.models.manifest import ImageRecord
-from imgeda.plotting.base import create_figure, prepare_records, save_figure
+from imgeda.plotting.base import COLORS, create_figure, prepare_records, save_figure
 
 COMMON_RATIOS = {
     "1:1": 1.0,
@@ -20,17 +20,20 @@ def plot_aspect_ratio(records: list[ImageRecord], config: PlotConfig) -> str:
 
     fig, ax = create_figure(config)
 
-    ax.hist(ratios, bins=80, color="steelblue", edgecolor="white", linewidth=0.3)
+    num_bins = min(80, max(20, len(ratios) // 5)) if ratios else 20
+    ax.hist(ratios, bins=num_bins, color=COLORS["primary"], edgecolor="white", linewidth=0.3)
 
     for label, val in COMMON_RATIOS.items():
-        ax.axvline(val, color="red", linestyle="--", alpha=0.6, linewidth=1)
-        ax.annotate(
+        ax.axvline(val, color=COLORS["danger"], linestyle="--", alpha=0.6, linewidth=1)
+        ax.text(
+            val,
+            ax.get_ylim()[1] * 1.02,
             label,
-            (val, ax.get_ylim()[1] * 0.95),
             fontsize=8,
-            color="red",
-            rotation=90,
-            ha="right",
+            color=COLORS["danger"],
+            ha="center",
+            va="bottom",
+            clip_on=False,
         )
 
     ax.set_xlabel("Aspect Ratio (width / height)")

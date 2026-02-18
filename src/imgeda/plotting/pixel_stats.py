@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from imgeda.models.config import PlotConfig
 from imgeda.models.manifest import ImageRecord
-from imgeda.plotting.base import create_figure, prepare_records, save_figure
+from imgeda.plotting.base import COLORS, create_figure, prepare_records, save_figure
 
 
 def plot_brightness(records: list[ImageRecord], config: PlotConfig) -> str:
@@ -14,11 +14,11 @@ def plot_brightness(records: list[ImageRecord], config: PlotConfig) -> str:
 
     fig, ax = create_figure(config)
 
-    ax.hist(brightness, bins=80, color="steelblue", edgecolor="white", linewidth=0.3)
+    ax.hist(brightness, bins=80, color=COLORS["primary"], edgecolor="white", linewidth=0.3)
 
     # Shaded regions
-    ax.axvspan(0, 40, alpha=0.1, color="navy", label="Dark (<40)")
-    ax.axvspan(220, 255, alpha=0.1, color="red", label="Overexposed (>220)")
+    ax.axvspan(0, 40, alpha=0.07, color="navy", label="Dark (<40)")
+    ax.axvspan(220, 255, alpha=0.07, color=COLORS["danger"], label="Overexposed (>220)")
 
     ax.set_xlabel("Mean Brightness")
     ax.set_ylabel("Count")
@@ -30,7 +30,7 @@ def plot_brightness(records: list[ImageRecord], config: PlotConfig) -> str:
 
 
 def plot_channels(records: list[ImageRecord], config: PlotConfig) -> str:
-    """Box plot of R/G/B channel means across all images."""
+    """Violin plot of R/G/B channel means across all images."""
     recs = [r for r in prepare_records(records, config) if r.pixel_stats]
 
     r_means = [r.pixel_stats.mean_r for r in recs]  # type: ignore[union-attr]
@@ -39,16 +39,24 @@ def plot_channels(records: list[ImageRecord], config: PlotConfig) -> str:
 
     fig, ax = create_figure(config)
 
-    bp = ax.boxplot(
+    parts = ax.violinplot(
         [r_means, g_means, b_means],
-        tick_labels=["Red", "Green", "Blue"],
-        patch_artist=True,
+        showmeans=True,
+        showmedians=True,
     )
-    colors = ["#ff6b6b", "#51cf66", "#339af0"]
-    for patch, color in zip(bp["boxes"], colors):
-        patch.set_facecolor(color)
-        patch.set_alpha(0.6)
 
+    channel_colors = [COLORS["channel_r"], COLORS["channel_g"], COLORS["channel_b"]]
+    for i, pc in enumerate(parts["bodies"]):
+        pc.set_facecolor(channel_colors[i])
+        pc.set_alpha(0.6)
+
+    # Style the stat lines
+    for key in ("cmeans", "cmedians", "cmins", "cmaxes", "cbars"):
+        if key in parts:
+            parts[key].set_color(COLORS["neutral"])
+
+    ax.set_xticks([1, 2, 3])
+    ax.set_xticklabels(["Red", "Green", "Blue"])
     ax.set_ylabel("Mean Channel Value")
     ax.set_title(f"Channel Distributions ({len(recs):,} images)")
     fig.tight_layout()
