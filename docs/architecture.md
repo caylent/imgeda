@@ -30,7 +30,7 @@
 ┌─────────────────────────────────────────────────────────────────────┐
 │                    Core (pure functions, no CLI deps)                │
 │                                                                     │
-│  analyzer.py ── Single-image analysis (never raises)                │
+│  analyzer.py ── Single-image analysis + EXIF extraction (never raises)│
 │  detector.py ── Pixel stats, exposure, corner/border detection      │
 │  hasher.py ──── Perceptual hashing (phash + dhash)                  │
 │  duplicates.py ─ Exact + near-duplicate clustering                  │
@@ -192,7 +192,7 @@ lambda_handler/
     └── generate_plots.py ──→ plotting/*, models/{config,manifest}
 
 models/                           (standalone dataclasses)
-├── manifest.py ── ImageRecord, PixelStats, CornerStats, ManifestMeta
+├── manifest.py ── ImageRecord (+ EXIF fields), PixelStats, CornerStats, ManifestMeta
 ├── config.py ──── ScanConfig, PlotConfig
 └── policy.py ──── Policy
 

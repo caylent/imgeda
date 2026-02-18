@@ -41,13 +41,13 @@ uv run mypy src/imgeda/
 
 The codebase follows a layered architecture: **CLI → Pipeline → Core (pure functions)**.
 
-- **`src/imgeda/cli/`** — Typer-based CLI commands (`scan`, `check`, `plot`, `report`, `info`, interactive wizard). Entry point: `cli/app.py`.
-- **`src/imgeda/core/`** — Pure analysis functions with zero CLI dependencies, designed to be Lambda-compatible. Includes `analyzer.py` (single-image analysis), `detector.py` (exposure/artifact detection), `hasher.py` (perceptual hashing), `duplicates.py` (hash-based clustering with sub-hash bucketing to avoid O(n²)), and `aggregator.py` (dataset summary).
+- **`src/imgeda/cli/`** — Typer-based CLI commands (`scan`, `check`, `plot`, `report`, `info`, `diff`, `gate`, `export`, interactive wizard). Entry point: `cli/app.py`.
+- **`src/imgeda/core/`** — Pure analysis functions with zero CLI dependencies, designed to be Lambda-compatible. Includes `analyzer.py` (single-image analysis + EXIF extraction), `detector.py` (exposure/artifact detection), `hasher.py` (perceptual hashing), `duplicates.py` (hash-based clustering with sub-hash bucketing to avoid O(n²)), `aggregator.py` (dataset summary), `diff.py` (manifest comparison), `gate.py` (policy-as-code evaluation), and `format_detector.py` (YOLO/COCO/VOC/classification detection).
 - **`src/imgeda/pipeline/`** — Orchestration layer: `ProcessPoolExecutor` parallelism with Rich progress bars, crash-tolerant resume via checkpoint logic, and graceful Ctrl+C signal handling. Batched processing with memory-bounded futures (batch size 5000).
-- **`src/imgeda/io/`** — JSONL manifest I/O with atomic writes (temp file + rename) and corruption-tolerant parsing (skips malformed lines).
-- **`src/imgeda/models/`** — Dataclasses with `__slots__`: `ImageRecord`, `PixelStats`, `CornerStats`, `ManifestMeta`, `ScanConfig`, `PlotConfig`.
-- **`src/imgeda/plotting/`** — Eight plot types (dimensions, file_size, aspect_ratio, brightness, channels, artifacts, duplicates), each in its own module.
-- **`src/imgeda/lambda_handler/`** — AWS Lambda entry point wrapping core functions.
+- **`src/imgeda/io/`** — JSONL manifest I/O with atomic writes (temp file + rename) and corruption-tolerant parsing (skips malformed lines). Parquet export via `parquet_io.py` (optional pyarrow dependency).
+- **`src/imgeda/models/`** — Dataclasses with `__slots__`: `ImageRecord` (including EXIF fields), `PixelStats`, `CornerStats`, `ManifestMeta`, `ScanConfig`, `PlotConfig`, `Policy`.
+- **`src/imgeda/plotting/`** — Seven plot types (dimensions, file_size, aspect_ratio, brightness, channels, artifacts, duplicates), each in its own module with a shared theme engine.
+- **`src/imgeda/lambda_handler/`** — AWS Lambda handlers (5 functions sharing one Docker image, routed by ACTION env var). CDK infrastructure in `cdk/`.
 
 ## Key Design Patterns
 

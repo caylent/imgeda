@@ -62,7 +62,7 @@ The wizard detects your dataset structure, shows a summary panel with image coun
 - **Fast parallel scanning** with multi-core `ProcessPoolExecutor` and Rich progress bars
 - **Resumable** — Ctrl+C anytime, progress is saved. Re-run and it picks up where it left off
 - **JSONL manifest** — append-only, crash-tolerant, one record per image
-- **Per-image analysis**: dimensions, file size, pixel statistics (mean/std per channel), brightness, perceptual hashing (phash + dhash), border artifact detection
+- **Per-image analysis**: dimensions, file size, pixel statistics (mean/std per channel), brightness, perceptual hashing (phash + dhash), border artifact detection, EXIF metadata (camera, lens, focal length, exposure, GPS flagging, distortion risk)
 - **Quality checks**: corrupt files, dark/overexposed images, border artifacts, exact and near-duplicate detection
 - **7 plot types** with automatic large-dataset adaptations
 - **Single-page HTML report** with embedded plots and summary tables
@@ -134,6 +134,7 @@ Options:
   --resume / --no-resume      Auto-resume from existing manifest [default: resume]
   --force                     Force full rescan (ignore existing manifest)
   --skip-pixel-stats          Metadata-only scan (faster)
+  --skip-exif                 Skip EXIF metadata extraction
   --no-hashes                 Skip perceptual hashing
   --extensions TEXT            Comma-separated extensions to include
   --dark-threshold FLOAT      Dark image threshold [default: 40.0]
@@ -210,7 +211,7 @@ The manifest is a JSONL file (one JSON object per line):
 
 ```jsonl
 {"__manifest_meta__": true, "input_dir": "./images", "created_at": "2026-02-17T12:00:00", ...}
-{"path": "./images/cat.jpg", "width": 500, "height": 375, "format": "JPEG", "phash": "a1b2c3d4", ...}
+{"path": "./images/cat.jpg", "width": 500, "height": 375, "format": "JPEG", "camera_make": "Canon", "focal_length_35mm": 50, "distortion_risk": "low", "has_gps_data": false, "phash": "a1b2c3d4", ...}
 ```
 
 The manifest is append-only and crash-tolerant. Resume is keyed on `(path, file_size, mtime)` — modified files are automatically re-analyzed.
