@@ -1,0 +1,19 @@
+name: CDK
+
+on:
+  push:
+    paths: ['cdk/**']
+  pull_request:
+    paths: ['cdk/**']
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: cd cdk && npm ci
+      - run: cd cdk && npm test
+      - run: cd cdk && npx cdk synth
