@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import signal
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,7 @@ from imgeda.models.config import ScanConfig
 from imgeda.models.manifest import ManifestMeta
 from imgeda.pipeline.checkpoint import filter_pending
 from imgeda.pipeline.runner import run_scan
+from imgeda.pipeline.signals import ShutdownHandler, worker_init
 
 
 class TestPipeline:
@@ -190,3 +192,36 @@ class TestCheckpoint:
 
         pending = filter_pending(images, processed)
         assert len(pending) == len(images) - 3
+
+
+class TestSignalHandler:
+    def test_initial_state(self) -> None:
+        handler = ShutdownHandler()
+        assert not handler.is_shutting_down
+
+    def test_request_shutdown(self) -> None:
+        handler = ShutdownHandler()
+        handler.request_shutdown()
+        assert handler.is_shutting_down
+
+    def test_install_uninstall(self) -> None:
+        handler = ShutdownHandler()
+        handler.install()
+        handler.uninstall()
+        assert not handler.is_shutting_down
+
+    def test_signal_sets_shutdown(self) -> None:
+        handler = ShutdownHandler()
+        handler.install()
+        try:
+            signal.raise_signal(signal.SIGINT)
+        except KeyboardInterrupt:
+            pass  # Should not happen on first signal
+        assert handler.is_shutting_down
+        handler.uninstall()
+
+    def test_worker_init(self) -> None:
+        original = signal.getsignal(signal.SIGINT)
+        worker_init()
+        assert signal.getsignal(signal.SIGINT) == signal.SIG_IGN
+        signal.signal(signal.SIGINT, original)  # restore
