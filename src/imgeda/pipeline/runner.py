@@ -20,7 +20,7 @@ from rich.progress import (
 
 from imgeda.core.analyzer import analyze_image
 from imgeda.io.image_reader import discover_images
-from imgeda.io.manifest_io import append_records, create_manifest
+from imgeda.io.manifest_io import append_records, create_manifest, write_meta
 from imgeda.models.config import ScanConfig
 from imgeda.models.manifest import ImageRecord, ManifestMeta
 from imgeda.pipeline.checkpoint import filter_pending, load_processed_set
@@ -67,10 +67,26 @@ def _run_scan_inner(
 
     # Resume logic
     already_processed = 0
+    meta = ManifestMeta(
+        input_dir=os.path.abspath(input_dir),
+        total_files=total_discovered,
+        created_at=datetime.now(timezone.utc).isoformat(),
+        settings={
+            "workers": config.workers,
+            "include_hashes": config.include_hashes,
+            "skip_pixel_stats": config.skip_pixel_stats,
+            "artifact_threshold": config.artifact_threshold,
+            "dark_threshold": config.dark_threshold,
+            "overexposed_threshold": config.overexposed_threshold,
+        },
+    )
+
     if config.resume and not config.force and output.exists():
         processed_set, existing_records = load_processed_set(output_path)
         already_processed = len(existing_records)
         pending = filter_pending(all_images, processed_set)
+        # Update metadata header without truncating existing records
+        write_meta(output_path, meta)
         if already_processed > 0:
             console.print(
                 f"  Resuming: [green]{already_processed:,}[/green] already processed, "
@@ -78,20 +94,6 @@ def _run_scan_inner(
             )
     else:
         pending = all_images
-        # Truncate and write fresh manifest header
-        meta = ManifestMeta(
-            input_dir=os.path.abspath(input_dir),
-            total_files=total_discovered,
-            created_at=datetime.now(timezone.utc).isoformat(),
-            settings={
-                "workers": config.workers,
-                "include_hashes": config.include_hashes,
-                "skip_pixel_stats": config.skip_pixel_stats,
-                "artifact_threshold": config.artifact_threshold,
-                "dark_threshold": config.dark_threshold,
-                "overexposed_threshold": config.overexposed_threshold,
-            },
-        )
         create_manifest(output_path, meta)
 
     if not pending:

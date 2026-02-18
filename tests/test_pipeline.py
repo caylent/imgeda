@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 
-from imgeda.io.manifest_io import read_manifest
+from imgeda.io.manifest_io import append_records, create_manifest, read_manifest
 from imgeda.models.config import ScanConfig
+from imgeda.models.manifest import ManifestMeta
 from imgeda.pipeline.checkpoint import filter_pending
 from imgeda.pipeline.runner import run_scan
 
@@ -28,8 +30,8 @@ class TestPipeline:
         assert corrupt >= 1  # we have one corrupt file
 
     @pytest.mark.timeout(60)
-    def test_scan_resume(self, tmp_image_dir: Path, tmp_path: Path) -> None:
-        """Test that resume skips already-processed images."""
+    def test_scan_resume_no_duplicates(self, tmp_image_dir: Path, tmp_path: Path) -> None:
+        """Resume on a fully-scanned manifest must not duplicate records."""
         output = str(tmp_path / "manifest.jsonl")
         config = ScanConfig(workers=2, checkpoint_every=5)
 
@@ -42,22 +44,119 @@ class TestPipeline:
         # Should not add duplicates
         _, records = read_manifest(output)
         assert len(records) == total1
+        assert total2 == total1
 
     @pytest.mark.timeout(60)
-    def test_scan_force(self, tmp_image_dir: Path, tmp_path: Path) -> None:
-        """Test force rescan."""
+    def test_scan_resume_preserves_records(self, tmp_image_dir: Path, tmp_path: Path) -> None:
+        """Resume must preserve all previously-written records (no truncation)."""
         output = str(tmp_path / "manifest.jsonl")
-        config = ScanConfig(workers=2, checkpoint_every=5, force=True, resume=False)
+        config = ScanConfig(workers=2, checkpoint_every=5)
 
+        # Full scan
         run_scan(str(tmp_image_dir), output, config)
-        _, records1 = read_manifest(output)
+        _, records_before = read_manifest(output)
+        paths_before = {r.path for r in records_before}
 
+        # Resume run
         run_scan(str(tmp_image_dir), output, config)
-        _, records2 = read_manifest(output)
+        _, records_after = read_manifest(output)
+        paths_after = {r.path for r in records_after}
 
-        # Force should have rescanned but result in same count
+        # Every record from the first run must still be present
+        assert paths_before == paths_after
+
+    @pytest.mark.timeout(60)
+    def test_scan_resume_partial(self, tmp_image_dir: Path, tmp_path: Path) -> None:
+        """Simulate a partial run: pre-populate manifest with some records, then resume."""
+        from imgeda.io.image_reader import discover_images
+
+        output = str(tmp_path / "manifest.jsonl")
+        config = ScanConfig(workers=2, checkpoint_every=5)
+        all_images = discover_images(str(tmp_image_dir), config.extensions)
+        total_images = len(all_images)
+        assert total_images > 3, "Need enough test images for a meaningful partial test"
+
+        # Create a manifest with only the first 3 images processed
+        meta = ManifestMeta(
+            input_dir=os.path.abspath(str(tmp_image_dir)),
+            total_files=total_images,
+            created_at="2025-01-01T00:00:00+00:00",
+        )
+        create_manifest(output, meta)
+
+        # Analyze first 3 images and write their records
+        from imgeda.core.analyzer import analyze_image
+
+        partial_records = [analyze_image(p, config) for p in all_images[:3]]
+        append_records(output, partial_records)
+        partial_paths = {r.path for r in partial_records}
+
+        # Resume should process the remaining images
+        total, _ = run_scan(str(tmp_image_dir), output, config)
+        _, records = read_manifest(output)
+
+        assert total == total_images
+        assert len(records) == total_images
+
+        # Verify previously-processed records are still present
+        final_paths = {r.path for r in records}
+        assert partial_paths.issubset(final_paths)
+
+    @pytest.mark.timeout(60)
+    def test_scan_force_truncates(self, tmp_image_dir: Path, tmp_path: Path) -> None:
+        """--force must truncate and rescan from scratch."""
+        output = str(tmp_path / "manifest.jsonl")
+
+        # Normal scan first
+        config = ScanConfig(workers=2, checkpoint_every=5)
+        run_scan(str(tmp_image_dir), output, config)
+        meta1, records1 = read_manifest(output)
+
+        # Force rescan
+        config_force = ScanConfig(workers=2, checkpoint_every=5, force=True, resume=False)
+        run_scan(str(tmp_image_dir), output, config_force)
+        meta2, records2 = read_manifest(output)
+
+        # Force should have rescanned; same count but fresh metadata timestamp
         assert len(records1) > 0
-        assert len(records2) > 0
+        assert len(records2) == len(records1)
+        assert meta1 is not None
+        assert meta2 is not None
+        assert meta2.created_at != meta1.created_at
+
+    @pytest.mark.timeout(60)
+    def test_scan_resume_nonexistent_manifest(self, tmp_image_dir: Path, tmp_path: Path) -> None:
+        """Resume with no existing manifest should create a new one and scan all images."""
+        output = str(tmp_path / "manifest.jsonl")
+        assert not Path(output).exists()
+
+        config = ScanConfig(workers=2, checkpoint_every=5, resume=True)
+        total, _ = run_scan(str(tmp_image_dir), output, config)
+
+        meta, records = read_manifest(output)
+        assert meta is not None
+        assert len(records) == total
+        assert total > 0
+
+    @pytest.mark.timeout(60)
+    def test_scan_resume_updates_metadata(self, tmp_image_dir: Path, tmp_path: Path) -> None:
+        """Resume must update the metadata header (e.g., total_files) without truncating."""
+        output = str(tmp_path / "manifest.jsonl")
+        config = ScanConfig(workers=2, checkpoint_every=5)
+
+        # First scan
+        run_scan(str(tmp_image_dir), output, config)
+        meta1, records1 = read_manifest(output)
+        assert meta1 is not None
+
+        # Resume scan
+        run_scan(str(tmp_image_dir), output, config)
+        meta2, records2 = read_manifest(output)
+        assert meta2 is not None
+
+        # Records preserved, metadata refreshed
+        assert len(records2) == len(records1)
+        assert meta2.total_files == meta1.total_files
 
     @pytest.mark.timeout(60)
     def test_scan_metadata_only(self, tmp_image_dir: Path, tmp_path: Path) -> None:
