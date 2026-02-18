@@ -56,6 +56,19 @@ The codebase follows a layered architecture: **CLI → Pipeline → Core (pure f
 - **JSONL manifest format** — first line is metadata (`__manifest_meta__: true`), remaining lines are `ImageRecord` entries. Append-only with atomic metadata updates.
 - **Serialization uses orjson** for performance.
 
+## Pre-push Checklist
+
+Before pushing any commits or creating/updating PRs, **always** run the full CI checks locally and confirm they pass:
+
+```bash
+uv run ruff format --check src/ tests/   # Format check (fix with: uv run ruff format src/ tests/)
+uv run ruff check src/ tests/            # Lint check
+uv run mypy src/imgeda/                  # Type check
+uv run pytest                            # All tests
+```
+
+Do not push until all four pass.
+
 ## Code Style
 
 - Line length: 100 characters
