@@ -67,6 +67,10 @@ class ImageRecord:
     phash: str | None = None
     dhash: str | None = None
 
+    # Blur
+    blur_score: float | None = None
+    is_blurry: bool = False
+
     # Flags
     is_corrupt: bool = False
     is_dark: bool = False

@@ -52,14 +52,17 @@ def evaluate_policy(records: list[ImageRecord], policy: Policy) -> GateResult:
         result.passed = False
         return result
 
+    valid = [r for r in records if not r.is_corrupt]
+
     # min_images_total
-    min_check = CheckResult(
-        name="min_images_total",
-        threshold=float(policy.min_images_total),
-        observed=float(total),
-        passed=total >= policy.min_images_total,
+    result.checks.append(
+        CheckResult(
+            name="min_images_total",
+            threshold=float(policy.min_images_total),
+            observed=float(total),
+            passed=total >= policy.min_images_total,
+        )
     )
-    result.checks.append(min_check)
 
     # max_corrupt_pct
     corrupt = [r for r in records if r.is_corrupt]
@@ -118,6 +121,87 @@ def evaluate_policy(records: list[ImageRecord], policy: Policy) -> GateResult:
             sample_paths=dup_paths[:10],
         )
     )
+
+    # max_blurry_pct
+    if policy.max_blurry_pct < 100.0:
+        blurry = [r for r in records if r.is_blurry]
+        blurry_pct = len(blurry) / total * 100
+        result.checks.append(
+            CheckResult(
+                name="max_blurry_pct",
+                threshold=policy.max_blurry_pct,
+                observed=round(blurry_pct, 2),
+                passed=blurry_pct <= policy.max_blurry_pct,
+                sample_paths=[r.path for r in blurry[:10]],
+            )
+        )
+
+    # max_artifact_pct
+    if policy.max_artifact_pct < 100.0:
+        artifacts = [r for r in records if r.has_border_artifact]
+        artifact_pct = len(artifacts) / total * 100
+        result.checks.append(
+            CheckResult(
+                name="max_artifact_pct",
+                threshold=policy.max_artifact_pct,
+                observed=round(artifact_pct, 2),
+                passed=artifact_pct <= policy.max_artifact_pct,
+                sample_paths=[r.path for r in artifacts[:10]],
+            )
+        )
+
+    # min_width
+    if policy.min_width > 0:
+        small = [r for r in valid if r.width < policy.min_width]
+        result.checks.append(
+            CheckResult(
+                name="min_width",
+                threshold=float(policy.min_width),
+                observed=float(min((r.width for r in valid), default=0)),
+                passed=len(small) == 0,
+                sample_paths=[r.path for r in small[:10]],
+            )
+        )
+
+    # min_height
+    if policy.min_height > 0:
+        short = [r for r in valid if r.height < policy.min_height]
+        result.checks.append(
+            CheckResult(
+                name="min_height",
+                threshold=float(policy.min_height),
+                observed=float(min((r.height for r in valid), default=0)),
+                passed=len(short) == 0,
+                sample_paths=[r.path for r in short[:10]],
+            )
+        )
+
+    # allowed_formats
+    if policy.allowed_formats:
+        allowed = {f.upper() for f in policy.allowed_formats}
+        bad_fmt = [r for r in valid if r.format.upper() not in allowed]
+        result.checks.append(
+            CheckResult(
+                name="allowed_formats",
+                threshold=0.0,
+                observed=float(len(bad_fmt)),
+                passed=len(bad_fmt) == 0,
+                sample_paths=[r.path for r in bad_fmt[:10]],
+            )
+        )
+
+    # max_aspect_ratio
+    if policy.max_aspect_ratio > 0:
+        extreme = [r for r in valid if r.aspect_ratio > policy.max_aspect_ratio]
+        result.checks.append(
+            CheckResult(
+                name="max_aspect_ratio",
+                threshold=policy.max_aspect_ratio,
+                observed=round(max((r.aspect_ratio for r in valid), default=0.0), 2),
+                passed=len(extreme) == 0,
+                sample_paths=[r.path for r in extreme[:10]],
+            )
+        )
 
     result.passed = all(c.passed for c in result.checks)
     return result

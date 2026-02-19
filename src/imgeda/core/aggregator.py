@@ -16,6 +16,7 @@ class DatasetSummary:
     dark_count: int = 0
     overexposed_count: int = 0
     artifact_count: int = 0
+    blurry_count: int = 0
 
     min_width: int = 0
     max_width: int = 0
@@ -86,6 +87,7 @@ def aggregate(records: list[ImageRecord]) -> DatasetSummary:
         dark_count=sum(1 for r in records if r.is_dark),
         overexposed_count=sum(1 for r in records if r.is_overexposed),
         artifact_count=sum(1 for r in records if r.has_border_artifact),
+        blurry_count=sum(1 for r in records if r.is_blurry),
         min_width=min(widths) if widths else 0,
         max_width=max(widths) if widths else 0,
         min_height=min(heights) if heights else 0,

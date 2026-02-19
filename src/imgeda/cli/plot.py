@@ -170,6 +170,74 @@ def duplicates(
     console.print(f"[green]Saved:[/green] {path}")
 
 
+@plot_app.command()
+def blur(
+    manifest: str = _manifest_opt,
+    output: str = _output_opt,
+    fmt: str = _format_opt,
+    dpi: int = _dpi_opt,
+    sample: Optional[int] = _sample_opt,
+    seed: int = _seed_opt,
+) -> None:
+    """Plot blur score distribution."""
+    from imgeda.plotting.blur import plot_blur
+
+    records, config = _load_and_config(manifest, output, fmt, dpi, sample, seed)
+    path = plot_blur(records, config)
+    console.print(f"[green]Saved:[/green] {path}")
+
+
+@plot_app.command()
+def exif_camera(
+    manifest: str = _manifest_opt,
+    output: str = _output_opt,
+    fmt: str = _format_opt,
+    dpi: int = _dpi_opt,
+    sample: Optional[int] = _sample_opt,
+    seed: int = _seed_opt,
+) -> None:
+    """Plot camera make/model distribution."""
+    from imgeda.plotting.exif import plot_camera_distribution
+
+    records, config = _load_and_config(manifest, output, fmt, dpi, sample, seed)
+    path = plot_camera_distribution(records, config)
+    console.print(f"[green]Saved:[/green] {path}")
+
+
+@plot_app.command()
+def exif_focal(
+    manifest: str = _manifest_opt,
+    output: str = _output_opt,
+    fmt: str = _format_opt,
+    dpi: int = _dpi_opt,
+    sample: Optional[int] = _sample_opt,
+    seed: int = _seed_opt,
+) -> None:
+    """Plot focal length distribution."""
+    from imgeda.plotting.exif import plot_focal_length
+
+    records, config = _load_and_config(manifest, output, fmt, dpi, sample, seed)
+    path = plot_focal_length(records, config)
+    console.print(f"[green]Saved:[/green] {path}")
+
+
+@plot_app.command()
+def exif_iso(
+    manifest: str = _manifest_opt,
+    output: str = _output_opt,
+    fmt: str = _format_opt,
+    dpi: int = _dpi_opt,
+    sample: Optional[int] = _sample_opt,
+    seed: int = _seed_opt,
+) -> None:
+    """Plot ISO speed distribution."""
+    from imgeda.plotting.exif import plot_iso_distribution
+
+    records, config = _load_and_config(manifest, output, fmt, dpi, sample, seed)
+    path = plot_iso_distribution(records, config)
+    console.print(f"[green]Saved:[/green] {path}")
+
+
 @plot_app.command(name="all")
 def all_plots(
     manifest: str = _manifest_opt,
@@ -182,8 +250,14 @@ def all_plots(
     """Generate all plots."""
     from imgeda.plotting.artifacts import plot_artifacts
     from imgeda.plotting.aspect_ratio import plot_aspect_ratio
+    from imgeda.plotting.blur import plot_blur
     from imgeda.plotting.dimensions import plot_dimensions
     from imgeda.plotting.duplicates import plot_duplicates
+    from imgeda.plotting.exif import (
+        plot_camera_distribution,
+        plot_focal_length,
+        plot_iso_distribution,
+    )
     from imgeda.plotting.file_size import plot_file_size
     from imgeda.plotting.pixel_stats import plot_brightness, plot_channels
 
@@ -195,14 +269,23 @@ def all_plots(
         ("Aspect ratio", plot_aspect_ratio),
         ("Brightness", plot_brightness),
         ("Channels", plot_channels),
+        ("Blur", plot_blur),
         ("Artifacts", plot_artifacts),
         ("Duplicates", plot_duplicates),
+        ("Camera distribution", plot_camera_distribution),
+        ("Focal length", plot_focal_length),
+        ("ISO distribution", plot_iso_distribution),
     ]
+    failed: list[str] = []
     for name, fn in plots:
         try:
             path = fn(records, config)
             console.print(f"  [green]{name}:[/green] {path}")
         except Exception as e:
             console.print(f"  [red]{name}: Failed — {e}[/red]")
+            failed.append(name)
 
+    if failed:
+        console.print(f"\n[red]{len(failed)} plot(s) failed: {', '.join(failed)}[/red]")
+        raise typer.Exit(1)
     console.print(f"\n[bold green]All plots saved to {output}/[/bold green]")

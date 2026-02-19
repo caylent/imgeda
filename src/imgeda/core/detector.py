@@ -77,3 +77,17 @@ def is_overexposed(pixel_stats: PixelStats, threshold: float) -> bool:
 
 def has_border_artifact(corner_stats: CornerStats, threshold: float) -> bool:
     return corner_stats.delta > threshold
+
+
+def compute_blur_score(pixels: NDArray[np.uint8]) -> float:
+    """Compute blur score via Laplacian variance. Lower = blurrier."""
+    gray = pixels.mean(axis=2).astype(np.float64)
+    # Laplacian kernel convolution via numpy
+    laplacian = (
+        np.roll(gray, 1, axis=0)
+        + np.roll(gray, -1, axis=0)
+        + np.roll(gray, 1, axis=1)
+        + np.roll(gray, -1, axis=1)
+        - 4 * gray
+    )
+    return float(laplacian.var())

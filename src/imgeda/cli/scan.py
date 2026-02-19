@@ -32,6 +32,8 @@ def scan(
     dark_threshold: float = typer.Option(40.0, "--dark-threshold"),
     overexposed_threshold: float = typer.Option(220.0, "--overexposed-threshold"),
     artifact_threshold: float = typer.Option(50.0, "--artifact-threshold"),
+    blur_threshold: float = typer.Option(100.0, "--blur-threshold", help="Blur score threshold"),
+    skip_blur: bool = typer.Option(False, "--skip-blur", help="Skip blur detection"),
     max_image_dim: int = typer.Option(2048, "--max-image-dim", help="Downsample threshold"),
 ) -> None:
     """Scan a directory of images and produce a JSONL manifest."""
@@ -50,6 +52,8 @@ def scan(
         dark_threshold=dark_threshold,
         overexposed_threshold=overexposed_threshold,
         artifact_threshold=artifact_threshold,
+        blur_threshold=blur_threshold,
+        skip_blur=skip_blur,
         max_image_dimension=max_image_dim,
         resume=resume,
         force=force,

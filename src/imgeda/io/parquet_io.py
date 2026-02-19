@@ -30,6 +30,8 @@ def _flatten_record(rec: ImageRecord) -> dict[str, object]:
         "orientation_tag": rec.orientation_tag if rec.orientation_tag is not None else 0,
         "has_gps_data": rec.has_gps_data,
         "distortion_risk": rec.distortion_risk or "",
+        "blur_score": rec.blur_score if rec.blur_score is not None else 0.0,
+        "is_blurry": rec.is_blurry,
         "phash": rec.phash or "",
         "dhash": rec.dhash or "",
         "is_corrupt": rec.is_corrupt,

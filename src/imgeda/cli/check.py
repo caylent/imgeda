@@ -112,6 +112,48 @@ def duplicates_cmd(manifest: str = _manifest_opt, output: Optional[str] = _outpu
     _output_results(results, output, "Duplicate groups")
 
 
+@check_app.command()
+def blur(manifest: str = _manifest_opt, output: Optional[str] = _output_opt) -> None:
+    """List blurry images."""
+    records = _load_records(manifest)
+    results = [{"path": r.path, "blur_score": r.blur_score} for r in records if r.is_blurry]
+    _output_results(results, output, "Blurry images")
+
+
+@check_app.command()
+def leakage(
+    manifests: list[str] = typer.Option(
+        ..., "-m", "--manifest", help="Manifest paths (provide 2+)"
+    ),
+    threshold: int = typer.Option(8, "--threshold", help="Hamming distance threshold"),
+    output: Optional[str] = _output_opt,
+) -> None:
+    """Detect duplicate images across splits (data leakage)."""
+    if len(manifests) < 2:
+        console.print("[red]Provide at least 2 manifests for leakage detection.[/red]")
+        raise typer.Exit(1)
+
+    from imgeda.core.leakage import detect_leakage
+
+    all_records: dict[str, list[ImageRecord]] = {}
+    for m in manifests:
+        meta, recs = read_manifest(m)
+        label = meta.input_dir if meta else m
+        all_records[label] = recs
+
+    result = detect_leakage(all_records, threshold)
+    console.print(f"\n[bold]Cross-split leakage:[/bold] {len(result):,} leaked images")
+    if output:
+        with open(output, "wb") as f:
+            f.write(orjson.dumps(result, option=orjson.OPT_INDENT_2))
+        console.print(f"[green]Saved to {output}[/green]")
+    elif result:
+        for item in result[:20]:
+            console.print(f"  {item['path']} appears in: {', '.join(item['found_in'])}")
+        if len(result) > 20:
+            console.print(f"  ... and {len(result) - 20} more")
+
+
 @check_app.command(name="all")
 def all_checks(manifest: str = _manifest_opt, output: Optional[str] = _output_opt) -> None:
     """Run all checks."""
@@ -133,6 +175,10 @@ def all_checks(manifest: str = _manifest_opt, output: Optional[str] = _output_op
     overexposed = [r for r in records if r.is_overexposed]
     console.print(f"  Dark: [yellow]{len(dark):,}[/yellow]")
     console.print(f"  Overexposed: [yellow]{len(overexposed):,}[/yellow]")
+
+    # Blur
+    blurry = [r for r in records if r.is_blurry]
+    console.print(f"  Blurry: [yellow]{len(blurry):,}[/yellow]")
 
     # Artifacts
     artifacts_list = [r for r in records if r.has_border_artifact]

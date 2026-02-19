@@ -10,6 +10,7 @@ import numpy as np
 from PIL import Image
 
 from imgeda.core.detector import (
+    compute_blur_score,
     compute_corner_stats,
     compute_pixel_stats,
     has_border_artifact,
@@ -193,7 +194,13 @@ def analyze_image(path: str, config: ScanConfig) -> ImageRecord:
                 record.corner_stats, config.artifact_threshold
             )
 
-        # Step 6: Perceptual hashes
+        # Step 6: Blur detection
+        if not config.skip_blur and not config.skip_pixel_stats:
+            score = compute_blur_score(pixels)
+            record.blur_score = round(score, 2)
+            record.is_blurry = score < config.blur_threshold
+
+        # Step 7: Perceptual hashes
         if config.include_hashes:
             record.phash = compute_phash(rgb, config.hash_size)
             record.dhash = compute_dhash(rgb, config.hash_size)

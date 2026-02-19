@@ -25,7 +25,7 @@ jobs:
         run: uv python install ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: UV_PYTHON=${{ matrix.python-version }} uv sync --all-extras
+        run: UV_PYTHON=${{ matrix.python-version }} uv sync --extra dev --extra parquet --extra opencv
 
       - name: Lint
         run: UV_PYTHON=${{ matrix.python-version }} uv run ruff check src/ tests/

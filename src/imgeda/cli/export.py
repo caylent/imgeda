@@ -43,3 +43,25 @@ def parquet(
 
     row_count = records_to_parquet(records, output)
     console.print(f"[green]Exported {row_count:,} records to {output}[/green]")
+
+
+@export_app.command()
+def csv(
+    manifest: str = typer.Option(..., "-m", "--manifest", help="Path to manifest JSONL"),
+    output: str = typer.Option(..., "-o", "--out", help="Output CSV file path"),
+) -> None:
+    """Export manifest to CSV format."""
+    if not Path(manifest).exists():
+        console.print(f"[red]Manifest not found: {manifest}[/red]")
+        raise typer.Exit(1)
+
+    _, records = read_manifest(manifest)
+
+    if not records:
+        console.print("[yellow]No records found in manifest.[/yellow]")
+        raise typer.Exit(1)
+
+    from imgeda.io.csv_io import records_to_csv
+
+    row_count = records_to_csv(records, output)
+    console.print(f"[green]Exported {row_count:,} records to {output}[/green]")

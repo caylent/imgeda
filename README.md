@@ -22,6 +22,14 @@ Or with [uv](https://docs.astral.sh/uv/):
 uv tool install imgeda
 ```
 
+### Optional extras
+
+```bash
+pip install imgeda[parquet]      # Parquet export
+pip install imgeda[embeddings]   # CLIP embeddings + UMAP visualization (torch, open_clip)
+pip install imgeda[opencv]       # OpenCV-accelerated scanning
+```
+
 ## Quick Start
 
 ```bash
@@ -34,7 +42,16 @@ imgeda info -m manifest.jsonl
 # Check for quality issues
 imgeda check all -m manifest.jsonl
 
-# Generate all plots
+# Detect blurry images
+imgeda check blur -m manifest.jsonl
+
+# Detect cross-split data leakage
+imgeda check leakage -m train.jsonl -m val.jsonl
+
+# Analyze annotations (auto-detects YOLO, COCO, VOC)
+imgeda annotations ./dataset
+
+# Generate all plots (11 plot types)
 imgeda plot all -m manifest.jsonl
 
 # Generate an HTML report
@@ -46,8 +63,12 @@ imgeda diff --old v1.jsonl --new v2.jsonl
 # Run quality gate (exit code 2 on failure — CI-friendly)
 imgeda gate -m manifest.jsonl -p policy.yml
 
-# Export to Parquet (requires: pip install imgeda[parquet])
-imgeda export parquet -m manifest.jsonl -o manifest.parquet
+# Export to CSV or Parquet
+imgeda export csv -m manifest.jsonl -o dataset.csv
+imgeda export parquet -m manifest.jsonl -o dataset.parquet
+
+# Compute CLIP embeddings with UMAP visualization (requires: pip install imgeda[embeddings])
+imgeda embed -m manifest.jsonl -o embeddings.npz --plot
 ```
 
 Or just run `imgeda` with no arguments for an interactive wizard that walks you through everything:
@@ -64,16 +85,19 @@ The wizard detects your dataset structure, shows a summary panel with image coun
 - **Fast parallel scanning** with multi-core `ProcessPoolExecutor` and Rich progress bars
 - **Resumable** — Ctrl+C anytime, progress is saved. Re-run and it picks up where it left off
 - **JSONL manifest** — append-only, crash-tolerant, one record per image
-- **Per-image analysis**: dimensions, file size, pixel statistics (mean/std per channel), brightness, perceptual hashing (phash + dhash), border artifact detection, EXIF metadata (camera, lens, focal length, exposure, GPS flagging, distortion risk)
-- **Quality checks**: corrupt files, dark/overexposed images, border artifacts, exact and near-duplicate detection
-- **7 plot types** with automatic large-dataset adaptations
+- **Per-image analysis**: dimensions, file size, pixel statistics (mean/std per channel), brightness, perceptual hashing (phash + dhash), border artifact detection, blur detection (Laplacian variance), EXIF metadata (camera, lens, focal length, exposure, GPS flagging, distortion risk)
+- **Quality checks**: corrupt files, dark/overexposed images, border artifacts, blur detection, exact and near-duplicate detection
+- **Cross-split leakage detection** — find duplicate images across train/val/test splits using perceptual hashing
+- **Annotation analysis** — parse and summarize YOLO, COCO, and Pascal VOC annotations with per-class statistics
+- **CLIP embeddings** — compute image embeddings with OpenCLIP, detect outliers, find semantic near-duplicates, and visualize with UMAP (optional extra)
+- **11 plot types** with automatic large-dataset adaptations: dimensions, file size, aspect ratio, brightness, channels, artifacts, duplicates, blur scores, EXIF camera/focal/ISO distributions
 - **Single-page HTML report** with embedded plots and summary tables
 - **Dataset format detection** — auto-detects YOLO, COCO, Pascal VOC, classification, and flat image directories with split-aware scanning
 - **Interactive configurator** with Rich panels, split selection, and smart defaults
 - **Lambda-compatible core** — the analysis functions have zero CLI dependencies, ready for serverless deployment
 - **Manifest diff** — compare two manifests to track dataset changes over time
-- **Quality gate** — policy-as-code YAML rules with CI-friendly exit codes
-- **Parquet export** — streaming JSONL-to-Parquet conversion with flattened nested fields
+- **Quality gate** — policy-as-code YAML rules with 11 configurable checks and CI-friendly exit codes
+- **CSV and Parquet export** — export manifests with flattened nested fields
 - **AWS serverless deployment** — CDK + Step Functions + Lambda for S3-scale analysis
 
 ## Example Output
@@ -151,11 +175,33 @@ Print a Rich-formatted dataset summary.
 
 ### `imgeda check <SUBCOMMAND> -m <MANIFEST>`
 
-Subcommands: `corrupt`, `exposure`, `artifacts`, `duplicates`, `all`
+Subcommands: `corrupt`, `exposure`, `artifacts`, `duplicates`, `blur`, `all`
+
+### `imgeda check leakage -m <MANIFEST> -m <MANIFEST>`
+
+Detect cross-split data leakage between two or more manifests using perceptual hashing.
+
+```
+Options:
+  --threshold INTEGER   Hamming distance threshold [default: 8]
+  -o, --out PATH        Output JSON path (optional)
+```
+
+### `imgeda annotations <DIR>`
+
+Analyze annotations in a dataset directory. Auto-detects YOLO, COCO, and Pascal VOC formats.
+
+```
+Options:
+  -f, --format TEXT          Force format: yolo, coco, voc (auto-detected if omitted)
+  --labels PATH              YOLO labels directory
+  --annotation-file PATH     COCO JSON annotation file
+  -o, --out PATH             Output JSON path (optional)
+```
 
 ### `imgeda plot <SUBCOMMAND> -m <MANIFEST>`
 
-Subcommands: `dimensions`, `file-size`, `aspect-ratio`, `brightness`, `channels`, `artifacts`, `duplicates`, `all`
+Subcommands: `dimensions`, `file-size`, `aspect-ratio`, `brightness`, `channels`, `artifacts`, `duplicates`, `blur`, `exif-camera`, `exif-focal`, `exif-iso`, `all`
 
 ```
 Common options:
@@ -189,16 +235,41 @@ Options:
 
 Example policy (`policy.yml`):
 ```yaml
+min_images_total: 100
 max_corrupt_pct: 1.0
 max_overexposed_pct: 5.0
 max_underexposed_pct: 5.0
 max_duplicate_pct: 10.0
-min_images_total: 100
+max_blurry_pct: 10.0
+max_artifact_pct: 5.0
+min_width: 224
+min_height: 224
+max_aspect_ratio: 3.0
+allowed_formats: [jpeg, png]
 ```
+
+### `imgeda export csv -m <MANIFEST> -o <OUTPUT>`
+
+Export manifest to CSV with flattened nested fields.
 
 ### `imgeda export parquet -m <MANIFEST> -o <OUTPUT>`
 
 Export manifest to Parquet format with flattened nested fields. Requires `pip install imgeda[parquet]`.
+
+### `imgeda embed -m <MANIFEST>`
+
+Compute CLIP image embeddings, detect outliers, and generate a UMAP scatter plot. Requires `pip install imgeda[embeddings]`.
+
+```
+Options:
+  -o, --out PATH             Output .npz file [default: ./embeddings.npz]
+  --model TEXT               OpenCLIP model name [default: ViT-B-32]
+  --pretrained TEXT          Pretrained weights [default: laion2b_s34b_b79k]
+  --batch-size INTEGER       Inference batch size [default: 32]
+  --device TEXT              Torch device (auto-detected)
+  --plot / --no-plot         Generate UMAP plot [default: --plot]
+  --plot-dir PATH            Plot output directory [default: ./plots]
+```
 
 ## Architecture
 
@@ -235,9 +306,10 @@ The tool is designed to handle 100K+ image datasets with batched processing, mem
 ```bash
 git clone https://github.com/caylent/imgeda.git
 cd imgeda
-uv sync --all-extras
+uv sync --extra dev --extra parquet --extra opencv
 uv run pytest
 uv run ruff check src/ tests/
+uv run mypy src/
 ```
 
 ## License

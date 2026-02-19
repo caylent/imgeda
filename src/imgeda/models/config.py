@@ -27,6 +27,8 @@ class ScanConfig:
     dark_threshold: float = 40.0
     overexposed_threshold: float = 220.0
     artifact_threshold: float = 50.0
+    blur_threshold: float = 100.0
+    skip_blur: bool = False
     corner_patch_fraction: float = 0.1
     max_image_dimension: int = 2048
     duplicate_hamming_threshold: int = 8

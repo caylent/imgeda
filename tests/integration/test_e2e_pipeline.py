@@ -165,8 +165,8 @@ class TestEndToEndPipeline:
         assert plots_dir.is_dir(), "plots directory not created"
 
         png_files = sorted(plots_dir.glob("*.png"))
-        assert len(png_files) == 7, (
-            f"expected 7 PNG plots, found {len(png_files)}: {[p.name for p in png_files]}"
+        assert len(png_files) == 11, (
+            f"expected 11 PNG plots, found {len(png_files)}: {[p.name for p in png_files]}"
         )
 
         # Verify each file has valid PNG magic bytes

@@ -51,9 +51,13 @@ from imgeda.cli.scan import scan  # noqa: E402
 from imgeda.cli.report import report, info  # noqa: E402
 from imgeda.cli.diff import diff  # noqa: E402
 from imgeda.cli.gate import gate  # noqa: E402
+from imgeda.cli.annotations import annotations_cmd  # noqa: E402
+from imgeda.cli.embed import embed  # noqa: E402
 
 app.command()(scan)
 app.command()(info)
 app.command()(report)
 app.command()(diff)
 app.command()(gate)
+app.command(name="annotations")(annotations_cmd)
+app.command()(embed)
