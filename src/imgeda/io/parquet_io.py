@@ -25,9 +25,7 @@ def _flatten_record(rec: ImageRecord) -> dict[str, object]:
         "focal_length_35mm": rec.focal_length_35mm if rec.focal_length_35mm is not None else 0,
         "iso_speed": rec.iso_speed if rec.iso_speed is not None else 0,
         "f_number": rec.f_number if rec.f_number is not None else 0.0,
-        "exposure_time_sec": (
-            rec.exposure_time_sec if rec.exposure_time_sec is not None else 0.0
-        ),
+        "exposure_time_sec": (rec.exposure_time_sec if rec.exposure_time_sec is not None else 0.0),
         "datetime_original": rec.datetime_original or "",
         "orientation_tag": rec.orientation_tag if rec.orientation_tag is not None else 0,
         "has_gps_data": rec.has_gps_data,

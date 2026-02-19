@@ -76,7 +76,7 @@ The wizard detects your dataset structure, shows a summary panel with image coun
 
 ## Example Output
 
-All examples below were generated from the [Oxford-IIIT Pet Dataset](https://www.robots.ox.ac.uk/~vgg/data/pets/) (3,680 images).
+All examples below were generated from the [Food-101 dataset](https://huggingface.co/datasets/ethz/food101) (2,000 images).
 
 ### Dimensions
 

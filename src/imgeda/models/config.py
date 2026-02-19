@@ -40,6 +40,6 @@ class PlotConfig:
     format: str = "png"
     dpi: int = 150
     sample: int | None = None
-    figsize: tuple[float, float] = (12.0, 8.0)
+    figsize: tuple[float, float] = (9.0, 6.0)
     artifact_threshold: float = 50.0
     seed: int = 42

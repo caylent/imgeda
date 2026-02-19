@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from imgeda.core.duplicates import find_exact_duplicates
 from imgeda.models.config import PlotConfig
 from imgeda.models.manifest import ImageRecord
-from imgeda.plotting.base import COLORS, apply_theme, save_figure
+from imgeda.plotting.base import COLORS, apply_theme, save_figure, tufte_axes
 
 
 def plot_duplicates(records: list[ImageRecord], config: PlotConfig) -> str:
@@ -18,7 +18,7 @@ def plot_duplicates(records: list[ImageRecord], config: PlotConfig) -> str:
     apply_theme()
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=config.figsize, dpi=config.dpi)
 
-    # Bar chart: group size distribution
+    # Left panel: group size distribution
     if groups:
         sizes = [len(v) for v in groups.values()]
         size_counts = Counter(sizes)
@@ -28,8 +28,7 @@ def plot_duplicates(records: list[ImageRecord], config: PlotConfig) -> str:
             [size_counts[k] for k in sorted_keys],
             color=COLORS["primary"],
             alpha=0.85,
-            edgecolor="white",
-            linewidth=0.5,
+            edgecolor="none",
         )
         for bar in bars:
             height = bar.get_height()
@@ -39,9 +38,8 @@ def plot_duplicates(records: list[ImageRecord], config: PlotConfig) -> str:
                 f"{int(height)}",
                 ha="center",
                 va="bottom",
-                fontsize=12,
-                fontweight="bold",
-                color=COLORS["neutral"],
+                fontsize=10,
+                color=COLORS["text_secondary"],
             )
         ax1.set_xlabel("Group Size")
         ax1.set_ylabel("Number of Groups")
@@ -54,31 +52,38 @@ def plot_duplicates(records: list[ImageRecord], config: PlotConfig) -> str:
             ha="center",
             va="center",
             transform=ax1.transAxes,
-            fontsize=14,
-            color=COLORS["neutral"],
+            fontsize=12,
+            color=COLORS["text_secondary"],
             fontstyle="italic",
         )
         ax1.set_title("Duplicate Group Sizes")
 
-    # Donut chart: unique vs duplicate
+    # Right panel: horizontal bar chart (replaces donut/pie)
     total = len(records)
     dup_count = sum(len(v) - 1 for v in groups.values())
     unique_count = total - dup_count
 
-    wedges, texts, autotexts = ax2.pie(
-        [unique_count, dup_count],
-        labels=[f"Unique ({unique_count:,})", f"Duplicates ({dup_count:,})"],
-        colors=[COLORS["success"], COLORS["danger"]],
-        autopct="%1.1f%%",
-        startangle=90,
-        wedgeprops=dict(width=0.55, edgecolor="white", linewidth=2),
-        textprops=dict(fontsize=12),
-    )
-    for at in autotexts:
-        at.set_fontweight("bold")
-        at.set_fontsize(12)
+    categories = ["Unique", "Duplicates"]
+    values = [unique_count, dup_count]
+    bar_colors = [COLORS["primary"], COLORS["highlight"]]
 
+    bars2 = ax2.barh(categories, values, color=bar_colors, alpha=0.85, edgecolor="none")
+
+    for bar, val in zip(bars2, values):
+        pct = val / total * 100 if total > 0 else 0
+        ax2.text(
+            bar.get_width() + max(total * 0.01, 1),
+            bar.get_y() + bar.get_height() / 2.0,
+            f"{val:,}  ({pct:.1f}%)",
+            va="center",
+            fontsize=10,
+            color=COLORS["text_secondary"],
+        )
+
+    ax2.set_xlabel("Image Count")
     ax2.set_title("Unique vs Duplicate Images")
 
+    tufte_axes(ax1)
+    tufte_axes(ax2)
     fig.tight_layout(w_pad=3)
     return save_figure(fig, "duplicates", config)
