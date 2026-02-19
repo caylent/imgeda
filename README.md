@@ -8,6 +8,8 @@ Scan folders of images, generate JSONL manifests with metadata and pixel statist
 [![Python](https://img.shields.io/pypi/pyversions/imgeda)](https://pypi.org/project/imgeda/)
 [![License](https://img.shields.io/pypi/l/imgeda)](https://github.com/caylent/imgeda/blob/main/LICENSE)
 
+![imgeda interactive wizard demo](https://raw.githubusercontent.com/caylent/imgeda/main/docs/demo.gif)
+
 ## Installation
 
 ```bash
